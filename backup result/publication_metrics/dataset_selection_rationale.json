@@ -1,0 +1,244 @@
+{
+    "title": "Dataset Selection Rationale for Multi-Modal SCIM Fault Detection",
+    "motivation": "No single public benchmark provides synchronised multi-modal data (vibration + current + thermal + RUL) from a single squirrel-cage induction motor (SCIM) under controlled fault conditions. Dataset selection was therefore guided by fault-type coverage, SCIM applicability, and data availability. This limitation motivates the Latent Digital Twin approach.",
+    "available_datasets_considered": [
+        {
+            "name": "CWRU Bearing Dataset",
+            "institution": "Case Western Reserve University",
+            "url": "https://engineering.case.edu/bearingdatacenter",
+            "modalities": {
+                "vibration": true,
+                "current": false,
+                "thermal": false,
+                "rul": false
+            },
+            "fault_types": [
+                "Normal",
+                "Inner Race",
+                "Ball",
+                "Outer Race"
+            ],
+            "scim_applicability": "High \u2014 induction motor bearings at 1750 RPM",
+            "selected": true,
+            "reason": "Gold standard for bearing fault classification; 4 fault types; 12kHz sampling; widely benchmarked"
+        },
+        {
+            "name": "NASA IMS Bearing Dataset",
+            "institution": "University of Cincinnati / NASA",
+            "url": "https://ti.arc.nasa.gov/tech/dash/groups/pcoe/prognostic-data-repository/",
+            "modalities": {
+                "vibration": true,
+                "current": false,
+                "thermal": false,
+                "rul": true
+            },
+            "fault_types": [
+                "Run-to-failure bearing degradation"
+            ],
+            "scim_applicability": "High \u2014 run-to-failure bearing data enabling RUL regression",
+            "selected": true,
+            "reason": "Only public bearing dataset with complete run-to-failure RUL labels; enables Bi-LSTM-Attn training"
+        },
+        {
+            "name": "Induction Motor Current Signature Dataset",
+            "institution": "Mendeley Data (Valtierra-Rodriguez et al. 2020)",
+            "url": "https://data.mendeley.com/datasets/",
+            "modalities": {
+                "vibration": true,
+                "current": false,
+                "thermal": false,
+                "rul": false
+            },
+            "fault_types": [
+                "Healthy",
+                "Broken Rotor Bar",
+                "Bearing Fault",
+                "Unbalance"
+            ],
+            "scim_applicability": "Very High \u2014 data captured directly from SCIM under motor fault conditions",
+            "selected": true,
+            "reason": "SCIM-specific vibration with 4 fault classes; temporal degradation provides realistic training data"
+        },
+        {
+            "name": "Motor Current Signature Analysis (3-Phase)",
+            "institution": "Kaggle / Multiple sources",
+            "url": "https://www.kaggle.com/",
+            "modalities": {
+                "vibration": false,
+                "current": true,
+                "thermal": false,
+                "rul": false
+            },
+            "fault_types": [
+                "Healthy",
+                "Bearing Fault",
+                "Broken Rotor Bar"
+            ],
+            "scim_applicability": "Very High \u2014 3-phase current directly measures stator/rotor faults in SCIM",
+            "selected": true,
+            "reason": "Only public 3-phase current dataset with SCIM fault labels; enables Current-CNN expert model"
+        },
+        {
+            "name": "Thermal Camera Motor Dataset",
+            "institution": "Custom / simulated thermal signatures",
+            "url": "N/A",
+            "modalities": {
+                "vibration": false,
+                "current": false,
+                "thermal": true,
+                "rul": false
+            },
+            "fault_types": [
+                "Normal",
+                "Warning",
+                "Critical thermal state"
+            ],
+            "scim_applicability": "High \u2014 IR thermography is standard industrial motor health monitoring",
+            "selected": true,
+            "reason": "Covers thermal modality not present in other benchmark datasets; enables early thermal fault detection"
+        },
+        {
+            "name": "FEMTO / PRONOSTIA Bearing Dataset",
+            "institution": "FEMTO-ST Institute",
+            "url": "https://www.femto-st.fr/",
+            "modalities": {
+                "vibration": true,
+                "current": false,
+                "thermal": true,
+                "rul": true
+            },
+            "fault_types": [
+                "Run-to-failure bearing degradation"
+            ],
+            "scim_applicability": "Medium \u2014 test rig bearings not directly from SCIM; different failure modes",
+            "selected": false,
+            "reason_not_selected": "Already covered by IMS for RUL; test rig bearings differ from SCIM motor bearings; no stator/rotor fault data"
+        },
+        {
+            "name": "MFPT Bearing Dataset",
+            "institution": "Machinery Failure Prevention Technology Society",
+            "url": "https://www.mfpt.org/fault-data-sets/",
+            "modalities": {
+                "vibration": true,
+                "current": false,
+                "thermal": false,
+                "rul": false
+            },
+            "fault_types": [
+                "Normal",
+                "Outer Race Fault",
+                "Inner Race Fault"
+            ],
+            "scim_applicability": "Medium \u2014 general bearing faults, not SCIM-specific",
+            "selected": false,
+            "reason_not_selected": "Subset of fault types covered by CWRU; no additional modalities or fault types"
+        },
+        {
+            "name": "Paderborn University Bearing Dataset",
+            "institution": "Paderborn University",
+            "url": "https://mb.uni-paderborn.de/kat/forschung/kat-datacenter/bearing-datacenter/",
+            "modalities": {
+                "vibration": true,
+                "current": true,
+                "thermal": false,
+                "rul": false
+            },
+            "fault_types": [
+                "Healthy",
+                "Inner Race",
+                "Outer Race (real + artificial damage)"
+            ],
+            "scim_applicability": "Medium \u2014 test rig data; includes motor current but at test rig level not SCIM",
+            "selected": false,
+            "reason_not_selected": "Current modality covered by dedicated MCSA dataset with SCIM-specific faults (BRB); Paderborn lacks rotor fault data critical for SCIM diagnosis"
+        },
+        {
+            "name": "MIMII Dataset (Malfunctioning Industrial Machine)",
+            "institution": "Hitachi / DCASE Challenge",
+            "url": "https://zenodo.org/record/3384388",
+            "modalities": {
+                "vibration": false,
+                "current": false,
+                "thermal": false,
+                "acoustic": true,
+                "rul": false
+            },
+            "fault_types": [
+                "Normal",
+                "Anomaly (machine-level)"
+            ],
+            "scim_applicability": "Low \u2014 acoustic anomaly detection, not SCIM-specific fault classification",
+            "selected": false,
+            "reason_not_selected": "Acoustic modality not in scope; no fault-class labels for specific SCIM failure modes"
+        }
+    ],
+    "coverage_matrix": {
+        "description": "Modality coverage across selected datasets",
+        "datasets": [
+            "CWRU",
+            "IMS",
+            "Induction Motor",
+            "Current MCSA",
+            "Thermal"
+        ],
+        "modalities": {
+            "vibration": [
+                true,
+                true,
+                true,
+                false,
+                false
+            ],
+            "3phase_current": [
+                false,
+                false,
+                false,
+                true,
+                false
+            ],
+            "thermal_image": [
+                false,
+                false,
+                false,
+                false,
+                true
+            ],
+            "rul_labels": [
+                false,
+                true,
+                false,
+                false,
+                false
+            ],
+            "bearing_fault": [
+                true,
+                true,
+                true,
+                true,
+                false
+            ],
+            "rotor_fault_brb": [
+                false,
+                false,
+                false,
+                true,
+                false
+            ],
+            "stator_fault": [
+                false,
+                false,
+                true,
+                true,
+                false
+            ],
+            "thermal_fault": [
+                false,
+                false,
+                false,
+                false,
+                true
+            ]
+        }
+    },
+    "conclusion": "The five selected datasets collectively cover all four target modalities (vibration, 3-phase current, thermal, RUL) with SCIM-specific fault types (bearing faults, broken rotor bars, stator winding faults, thermal degradation). No single dataset covers all modalities simultaneously \u2014 this fundamental data scarcity in the SCIM PHM domain is the primary motivation for the Latent Digital Twin approach, which generates physics-consistent co-located multi-modal training data."
+}

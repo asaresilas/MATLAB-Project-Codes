@@ -1,0 +1,243 @@
+{
+    "timestamp": "2026-05-27T18:30:40.353136",
+    "total_dims": 32,
+    "actual_dims_verified": 32,
+    "dims_match": true,
+    "feature_manifest": [
+        {
+            "index": 0,
+            "name": "CWRU_p_Normal",
+            "group": "CWRU_probs",
+            "description": "P(CWRU -> Normal/Healthy)",
+            "source": "softmax output"
+        },
+        {
+            "index": 1,
+            "name": "CWRU_p_Warning",
+            "group": "CWRU_probs",
+            "description": "P(CWRU -> Warning/Intermediate)",
+            "source": "softmax output"
+        },
+        {
+            "index": 2,
+            "name": "CWRU_p_Critical",
+            "group": "CWRU_probs",
+            "description": "P(CWRU -> Critical/Severe)",
+            "source": "softmax output"
+        },
+        {
+            "index": 3,
+            "name": "CWRU_entropy",
+            "group": "CWRU_uncertainty",
+            "description": "Shannon entropy H(p) = -Sigma p_i ln(p_i) for CWRU",
+            "source": "get_rich_features"
+        },
+        {
+            "index": 4,
+            "name": "CWRU_margin",
+            "group": "CWRU_uncertainty",
+            "description": "Decision margin = max_prob - 2nd_max_prob for CWRU",
+            "source": "get_rich_features"
+        },
+        {
+            "index": 5,
+            "name": "Induction_p_Normal",
+            "group": "Induction_probs",
+            "description": "P(Induction -> Normal/Healthy)",
+            "source": "softmax output"
+        },
+        {
+            "index": 6,
+            "name": "Induction_p_Warning",
+            "group": "Induction_probs",
+            "description": "P(Induction -> Warning/Intermediate)",
+            "source": "softmax output"
+        },
+        {
+            "index": 7,
+            "name": "Induction_p_Critical",
+            "group": "Induction_probs",
+            "description": "P(Induction -> Critical/Severe)",
+            "source": "softmax output"
+        },
+        {
+            "index": 8,
+            "name": "Induction_entropy",
+            "group": "Induction_uncertainty",
+            "description": "Shannon entropy H(p) = -Sigma p_i ln(p_i) for Induction",
+            "source": "get_rich_features"
+        },
+        {
+            "index": 9,
+            "name": "Induction_margin",
+            "group": "Induction_uncertainty",
+            "description": "Decision margin = max_prob - 2nd_max_prob for Induction",
+            "source": "get_rich_features"
+        },
+        {
+            "index": 10,
+            "name": "NASA_p_Normal",
+            "group": "NASA_probs",
+            "description": "P(NASA -> Normal/Healthy)",
+            "source": "softmax output"
+        },
+        {
+            "index": 11,
+            "name": "NASA_p_Warning",
+            "group": "NASA_probs",
+            "description": "P(NASA -> Warning/Intermediate)",
+            "source": "softmax output"
+        },
+        {
+            "index": 12,
+            "name": "NASA_p_Critical",
+            "group": "NASA_probs",
+            "description": "P(NASA -> Critical/Severe)",
+            "source": "softmax output"
+        },
+        {
+            "index": 13,
+            "name": "NASA_entropy",
+            "group": "NASA_uncertainty",
+            "description": "Shannon entropy H(p) = -Sigma p_i ln(p_i) for NASA",
+            "source": "get_rich_features"
+        },
+        {
+            "index": 14,
+            "name": "NASA_margin",
+            "group": "NASA_uncertainty",
+            "description": "Decision margin = max_prob - 2nd_max_prob for NASA",
+            "source": "get_rich_features"
+        },
+        {
+            "index": 15,
+            "name": "Current_p_Normal",
+            "group": "Current_probs",
+            "description": "P(Current -> Normal/Healthy)",
+            "source": "softmax output"
+        },
+        {
+            "index": 16,
+            "name": "Current_p_Warning",
+            "group": "Current_probs",
+            "description": "P(Current -> Warning/Intermediate)",
+            "source": "softmax output"
+        },
+        {
+            "index": 17,
+            "name": "Current_p_Critical",
+            "group": "Current_probs",
+            "description": "P(Current -> Critical/Severe)",
+            "source": "softmax output"
+        },
+        {
+            "index": 18,
+            "name": "Current_entropy",
+            "group": "Current_uncertainty",
+            "description": "Shannon entropy H(p) = -Sigma p_i ln(p_i) for Current",
+            "source": "get_rich_features"
+        },
+        {
+            "index": 19,
+            "name": "Current_margin",
+            "group": "Current_uncertainty",
+            "description": "Decision margin = max_prob - 2nd_max_prob for Current",
+            "source": "get_rich_features"
+        },
+        {
+            "index": 20,
+            "name": "Thermal_p_Normal",
+            "group": "Thermal_probs",
+            "description": "P(Thermal -> Normal/Healthy)",
+            "source": "softmax output"
+        },
+        {
+            "index": 21,
+            "name": "Thermal_p_Warning",
+            "group": "Thermal_probs",
+            "description": "P(Thermal -> Warning/Intermediate)",
+            "source": "softmax output"
+        },
+        {
+            "index": 22,
+            "name": "Thermal_p_Critical",
+            "group": "Thermal_probs",
+            "description": "P(Thermal -> Critical/Severe)",
+            "source": "softmax output"
+        },
+        {
+            "index": 23,
+            "name": "Thermal_entropy",
+            "group": "Thermal_uncertainty",
+            "description": "Shannon entropy H(p) = -Sigma p_i ln(p_i) for Thermal",
+            "source": "get_rich_features"
+        },
+        {
+            "index": 24,
+            "name": "Thermal_margin",
+            "group": "Thermal_uncertainty",
+            "description": "Decision margin = max_prob - 2nd_max_prob for Thermal",
+            "source": "get_rich_features"
+        },
+        {
+            "index": 25,
+            "name": "global_mean_p_Normal",
+            "group": "global_stats",
+            "description": "Mean of P->Normal across all 5 experts",
+            "source": "np.mean"
+        },
+        {
+            "index": 26,
+            "name": "global_mean_p_Warning",
+            "group": "global_stats",
+            "description": "Mean of P->Warning across all 5 experts",
+            "source": "np.mean"
+        },
+        {
+            "index": 27,
+            "name": "global_mean_p_Critical",
+            "group": "global_stats",
+            "description": "Mean of P->Critical across all 5 experts",
+            "source": "np.mean"
+        },
+        {
+            "index": 28,
+            "name": "global_var_p_Normal",
+            "group": "global_stats",
+            "description": "Variance of P->Normal across all 5 experts (expert disagreement)",
+            "source": "np.var"
+        },
+        {
+            "index": 29,
+            "name": "global_var_p_Warning",
+            "group": "global_stats",
+            "description": "Variance of P->Warning across all 5 experts (expert disagreement)",
+            "source": "np.var"
+        },
+        {
+            "index": 30,
+            "name": "global_var_p_Critical",
+            "group": "global_stats",
+            "description": "Variance of P->Critical across all 5 experts (expert disagreement)",
+            "source": "np.var"
+        },
+        {
+            "index": 31,
+            "name": "global_entropy",
+            "group": "global_stats",
+            "description": "Shannon entropy of the mean probability vector across all experts",
+            "source": "extract_meta_features_from_predictions"
+        }
+    ],
+    "corrected_equation_text": "The meta-feature vector phi in ?^32 is constructed as:\n\n  phi = [phi_CWRU, phi_Ind, phi_NASA, phi_Curr, phi_Therm, mu_p, sigma^2_p, H_g]\n\nwhere for each expert e in {CWRU, Induction, NASA, Current, Thermal}:\n  phi_e = [p_e^(0), p_e^(1), p_e^(2), H(p_e), m_e]  in ?^5\n  p_e^(k): softmax probability for class k in {Normal, Warning, Critical}\n  H(p_e) = -Sigma_k p_e^(k) ln(p_e^(k)):  Shannon entropy (uncertainty)\n  m_e = p_e^(argmax) - p_e^(2nd argmax):  decision margin\n\nGlobal statistics (7 additional dimensions):\n  mu_p = (1/5) Sigma_e p_e  in ?^3:  mean class probability across experts\n  sigma^2_p = Var_e(p_e)    in ?^3:  expert disagreement per class\n  H_g = H(mu_p)         in ?^1:  global entropy of the consensus distribution\n\nDimension count: 5 experts x 5 = 25, plus 3 + 3 + 1 = 7 global = 32 total. OK",
+    "reviewer_response": "Reviewer ?III.C notes: 'the remaining 7 dimensions of sigma are unspecified.' These 7 dimensions ARE specified in the code (src/features/meta_fusion_features.py, extract_meta_features_from_predictions()): mean_p (3 dims, mu_p), var_p (3 dims, sigma^2_p), global_ent (1 dim, H_g). The paper's Eq. (5) needs to be expanded to show all three components. The reviewer's count of 25 is correct for the expert blocks; the remaining 7 are the global cross-expert statistics appended in the same function.",
+    "breakdown_summary": {
+        "per_expert_dims": 5,
+        "n_experts": 5,
+        "expert_block_total": 25,
+        "global_mean_p": 3,
+        "global_var_p": 3,
+        "global_entropy": 1,
+        "grand_total": 32
+    }
+}

@@ -1,0 +1,16 @@
+{
+    "model_name": "Bi-LSTM-Attn",
+    "filename": "Bi-LSTM-Attn_model.keras",
+    "scaler_filename": "Bi-LSTM-Attn_scaler.pkl",
+    "training_date": "2025-12-07 19:15:55",
+    "metrics": {
+        "RMSE": 1.7343871291149808,
+        "MAE": 1.354530538693036,
+        "R2": 0.9963593007489099
+    },
+    "input_shape": [
+        30,
+        36
+    ],
+    "window_size": 30
+}

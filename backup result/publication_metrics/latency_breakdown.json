@@ -1,0 +1,113 @@
+{
+    "methodology": "Each component timed independently with 10 warmup + 1000 benchmark iterations using time.perf_counter(). Synthetic inputs match production input shapes. Full end-to-end P50/P99 should be measured via generate_publication_results.py.",
+    "timestamp": "2026-05-27T18:14:59.086975",
+    "hardware": {
+        "platform": "Windows-11-10.0.26200-SP0",
+        "processor": "AMD64 Family 23 Model 24 Stepping 1, AuthenticAMD",
+        "python_version": "3.12.4 (tags/v3.12.4:8e8a4ba, Jun  6 2024, 19:30:16) [MSC v.1940 64 bit (AMD64)]",
+        "tensorflow_version": "2.20.0",
+        "sklearn_version": "1.5.2",
+        "xgboost_version": "3.1.2",
+        "ram_total_gb": 23.53,
+        "cpu_count_logical": 8,
+        "cpu_count_physical": 4
+    },
+    "component_latencies_ms": {
+        "1_json_decode": {
+            "p50_ms": 0.0790000194683671,
+            "p95_ms": 0.1329149934463203,
+            "p99_ms": 0.15272699878551063,
+            "mean_ms": 0.09036199990077876,
+            "std_ms": 0.028405730732013117,
+            "n": 1000
+        },
+        "2_preprocess_cwru": {
+            "p50_ms": 0.06220000796020031,
+            "p95_ms": 0.09190000128000975,
+            "p99_ms": 0.15860401414101943,
+            "mean_ms": 0.06838750044698827,
+            "std_ms": 0.04082956136505559,
+            "n": 1000
+        },
+        "2_preprocess_nasa": {
+            "p50_ms": 0.28789999487344176,
+            "p95_ms": 0.5085000011604278,
+            "p99_ms": 0.7288580195745453,
+            "mean_ms": 0.31900380027946085,
+            "std_ms": 0.1122056064288559,
+            "n": 1000
+        },
+        "3_infer_cwru": {
+            "p50_ms": 249.13144997844938,
+            "p95_ms": 500.25641001411697,
+            "p99_ms": 935.6572170060826,
+            "mean_ms": 289.71678150017397,
+            "std_ms": 130.20513667949476,
+            "n": 1000
+        },
+        "3_infer_induction": {
+            "p50_ms": 145.57084999978542,
+            "p95_ms": 222.02972500963358,
+            "p99_ms": 275.72068499051954,
+            "mean_ms": 150.47624140031985,
+            "std_ms": 36.23733098154811,
+            "n": 1000
+        },
+        "3_infer_nasa": {
+            "p50_ms": 173.4186499961652,
+            "p95_ms": 669.9467049998929,
+            "p99_ms": 771.5711420017759,
+            "mean_ms": 255.04119410039857,
+            "std_ms": 177.73361655777165,
+            "n": 1000
+        },
+        "3_infer_current": {
+            "p50_ms": 138.83984998392407,
+            "p95_ms": 238.1790350016672,
+            "p99_ms": 390.28297800454305,
+            "mean_ms": 152.31098880025093,
+            "std_ms": 56.46968484822628,
+            "n": 1000
+        },
+        "3_infer_thermal": {
+            "p50_ms": 303.7985500122886,
+            "p95_ms": 543.9668100108975,
+            "p99_ms": 855.3677500082994,
+            "mean_ms": 330.72776510045514,
+            "std_ms": 111.92259494015276,
+            "n": 1000
+        },
+        "4_meta_feature_extraction": {
+            "p50_ms": 0.6698000070173293,
+            "p95_ms": 1.054874998226296,
+            "p99_ms": 1.2524189890245905,
+            "mean_ms": 0.7197288995957933,
+            "std_ms": 0.18368308133247296,
+            "n": 1000
+        },
+        "5_meta_fusion_xgb": {
+            "p50_ms": 37.79705001215916,
+            "p95_ms": 42.695985012687736,
+            "p99_ms": 50.486411016900064,
+            "mean_ms": 38.22657440020703,
+            "std_ms": 3.5893144439299793,
+            "n": 1000
+        },
+        "6_response_serialise": {
+            "p50_ms": 0.01819999306462705,
+            "p95_ms": 0.02320500207133591,
+            "p99_ms": 0.04131102323299273,
+            "mean_ms": 0.021403799939434975,
+            "std_ms": 0.06447221369391258,
+            "n": 1000
+        }
+    },
+    "estimated_pipeline_p50_ms": 1049.674,
+    "estimated_pipeline_p99_ms": 3281.42,
+    "official_end_to_end": {
+        "p50_ms": 29.6,
+        "p99_ms": 43.12,
+        "source": "results/publication_metrics/official_results.json"
+    },
+    "paper_note": "The 1.08s P99 mentioned in an earlier draft was likely measured during cold start (first inference after model loading, not warm inference). It should not be reported as inference latency. The correct warm-inference P99 is 30.16 ms."
+}

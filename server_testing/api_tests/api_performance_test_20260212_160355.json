@@ -1,0 +1,63 @@
+{
+  "timestamp": "2026-02-12T16:02:48.274080",
+  "tests": {
+    "models_loaded": {
+      "count": 6,
+      "models": [
+        "CIA1",
+        "CWRU",
+        "Current_Signature",
+        "Induction_Motor",
+        "NASA",
+        "Thermal"
+      ]
+    },
+    "authentication": {
+      "status": "success",
+      "expires_in": 1800
+    }
+  },
+  "performance": {
+    "health_check": 2.0382494926452637,
+    "authentication": 2.042229652404785,
+    "diagnosis_healthy": 5.572557687759399,
+    "diagnosis_early_degradation": 3.315950632095337,
+    "diagnosis_fault_developing": 3.3328874111175537,
+    "diagnosis_critical": 3.2629802227020264
+  },
+  "model_predictions": {
+    "healthy": {
+      "rul_hours": 27.299272537231445,
+      "rul_confidence": 0.9823565483093262,
+      "overall_health": "Critical",
+      "priority_action": "IMMEDIATE ACTION REQUIRED: Stop operation and inspect equipment.",
+      "faults_detected": 2,
+      "execution_time": 5.572557687759399
+    },
+    "early_degradation": {
+      "rul_hours": 36.25397872924805,
+      "rul_confidence": 0.9786771535873413,
+      "overall_health": "Critical",
+      "priority_action": "IMMEDIATE ACTION REQUIRED: Stop operation and inspect equipment.",
+      "faults_detected": 2,
+      "execution_time": 3.315950632095337
+    },
+    "fault_developing": {
+      "rul_hours": 64.72673034667969,
+      "rul_confidence": 0.999526858329773,
+      "overall_health": "Warning",
+      "priority_action": "Schedule maintenance within 24-48 hours.",
+      "faults_detected": 2,
+      "execution_time": 3.3328874111175537
+    },
+    "critical": {
+      "rul_hours": 65.10990905761719,
+      "rul_confidence": 0.99967360496521,
+      "overall_health": "Warning",
+      "priority_action": "Schedule maintenance within 24-48 hours.",
+      "faults_detected": 1,
+      "execution_time": 3.2629802227020264
+    }
+  },
+  "summary": {}
+}

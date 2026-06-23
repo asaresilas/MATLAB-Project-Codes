@@ -1,0 +1,29 @@
+{
+  "test_accuracy": 0.9925925925925926,
+  "final_train_loss": 0.03372212499380112,
+  "final_val_loss": 0.043072570115327835,
+  "final_train_acc": 0.9920634627342224,
+  "final_val_acc": 0.9925925731658936,
+  "confusion_matrix": [
+    [
+      45,
+      0,
+      0
+    ],
+    [
+      0,
+      45,
+      0
+    ],
+    [
+      0,
+      1,
+      44
+    ]
+  ],
+  "class_names": [
+    "Normal",
+    "Warning",
+    "Critical"
+  ]
+}

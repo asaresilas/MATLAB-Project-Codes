@@ -1,0 +1,1031 @@
+================================================================================
+                    MATLAB/SIMULINK - VIRTUAL SYSTEM INTEGRATION GUIDE
+                      Digital Twin Predictive Maintenance System
+                                  February 12, 2026
+================================================================================
+
+TABLE OF CONTENTS
+================================================================================
+1. Architecture Overview
+2. Virtual System Data Flow
+3. Simulink Model Integration
+4. MATLAB Client Configuration
+5. API Communication Protocol
+6. Data Storage & Persistence
+7. Ground Truth Collection
+8. Real-Time Monitoring & Visualization
+9. Step-by-Step Implementation Roadmap
+10. Testing & Validation Checklist
+
+================================================================================
+1. ARCHITECTURE OVERVIEW
+================================================================================
+
+The system consists of three main tiers:
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          MATLAB/SIMULINK LAYER                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │  Virtual System (Motor Simulation)                                   │   │
+│  │  - Generates synthetic sensor data (Vibration, Current, Temp, etc.) │   │
+│  │  - Injects faults at specific timepoints                            │   │
+│  │  - Outputs: 5-100 sensor readings per time step                     │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                    ↓                                          │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │  PredictiveMaintenanceClient (MATLAB Function Block)                │   │
+│  │  - Buffers sensor data into chunks (e.g., 1024 samples)            │   │
+│  │  - Calls WebSocket API with sensor arrays                          │   │
+│  │  - Receives prediction + alert level                                │   │
+│  │  - Displays alert in Simulink Scope / Dashboard                     │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                    ↓                                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                     │
+                   WebSocket JSON Messages (Port 8002)
+                                     │
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          PYTHON BACKEND (FastAPI)                           │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │  WebSocket Endpoint: ws://localhost:8002/ws/simulink/{client_id}   │   │
+│  │  - Receives sensor_data messages from Simulink                      │   │
+│  │  - Routes to appropriate DL model (router logic)                    │   │
+│  │  - Runs inference pipeline                                          │   │
+│  │  - Returns prediction + confidence + alert_level                    │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                    ↓                                          │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │  Ensemble of 6 Deep Learning Models                                 │   │
+│  │  - DL-01: CWRU (Bearing Faults)                                    │   │
+│  │  - DL-02: NASA IMS (RUL Estimation)                                │   │
+│  │  - DL-03: Current Signature (Electrical Faults)                    │   │
+│  │  - DL-04: CIA-1 (Complex Industrial Faults)                        │   │
+│  │  - DL-05: Induction Motor (General Faults)                         │   │
+│  │  - DL-06: Thermal Imaging (Thermal Anomalies)                      │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                    ↓                                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                     │
+                   REST API + Database Write
+                                     │
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        POSTGRESQL DATABASE LAYER                            │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │  Tables:                                                             │   │
+│  │  - sensor_readings: Raw sensor data from virtual system             │   │
+│  │  - predictions_log: Model predictions & inference times             │   │
+│  │  - ground_truth: Actual failure outcomes (for retraining)           │   │
+│  │  - model_versions: Metadata on deployed models                      │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │  Weekly Retraining Pipeline:                                         │   │
+│  │  - Aggregates ground_truth + sensor_readings                         │   │
+│  │  - Trains new ensemble of 6 models                                   │   │
+│  │  - A/B tests with 10% traffic on live system                         │   │
+│  │  - Auto-promotes if validation metrics improve                       │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+================================================================================
+2. VIRTUAL SYSTEM DATA FLOW
+================================================================================
+
+The virtual motor system simulates real equipment and generates sensor data
+continuously. Below is the detailed data flow:
+
+STEP 1: Virtual System Generates Sensor Data
+─────────────────────────────────────────────
+Location: Your Simulink model (motor_virtual_system.slx or similar)
+
+The model creates synthetic sensor readings. Below is the comprehensive sensor list
+required for all 6 deep learning models to predict correctly:
+
+SENSOR REQUIREMENTS BY MODEL:
+═════════════════════════════
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ DL-01: CWRU (Bearing Faults Detection)                                     │
+│ ├─ Vibration_X_Drive (Acceleration, Drive End, m/s²)   [REQUIRED]         │
+│ ├─ Vibration_Y_Drive (Acceleration, Drive End, m/s²)   [REQUIRED]         │
+│ ├─ Vibration_Z_Drive (Acceleration, Drive End, m/s²)   [OPTIONAL]         │
+│ ├─ Vibration_X_Fan (Acceleration, Fan End, m/s²)       [REQUIRED]         │
+│ ├─ Vibration_Y_Fan (Acceleration, Fan End, m/s²)       [REQUIRED]         │
+│ └─ Vibration_Z_Fan (Acceleration, Fan End, m/s²)       [OPTIONAL]         │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ DL-02: NASA IMS (RUL Estimation, Run-to-Failure)                           │
+│ ├─ Vibration_X (Time-series, m/s²)                     [REQUIRED]         │
+│ ├─ Vibration_Y (Time-series, m/s²)                     [REQUIRED]         │
+│ ├─ Vibration_Z (Time-series, m/s²)                     [REQUIRED]         │
+│ ├─ Temperature_Bearing (°C)                            [REQUIRED]         │
+│ ├─ Temperature_Motor (°C)                              [OPTIONAL]         │
+│ └─ Motor_Speed (RPM)                                   [OPTIONAL]         │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ DL-03: Current Signature (Electrical Faults, MCSA)                         │
+│ ├─ Current_Phase_A (Stator current phase A, A)         [REQUIRED]         │
+│ ├─ Current_Phase_B (Stator current phase B, A)         [REQUIRED]         │
+│ ├─ Current_Phase_C (Stator current phase C, A)         [REQUIRED]         │
+│ ├─ Current_RMS (RMS current, A)                        [OPTIONAL]         │
+│ ├─ Voltage_Phase_A (V)                                 [OPTIONAL]         │
+│ ├─ Voltage_Phase_B (V)                                 [OPTIONAL]         │
+│ ├─ Voltage_Phase_C (V)                                 [OPTIONAL]         │
+│ └─ Power_Factor (dimensionless)                        [OPTIONAL]         │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ DL-04: CIA-1 (Complex Industrial Faults, Multi-sensor Fusion)              │
+│ ├─ Vibration_X (m/s²)                                  [REQUIRED]         │
+│ ├─ Vibration_Y (m/s²)                                  [REQUIRED]         │
+│ ├─ Vibration_Z (m/s²)                                  [REQUIRED]         │
+│ ├─ Temperature_Bearing (°C)                            [REQUIRED]         │
+│ ├─ Current_Phase_A (A)                                 [REQUIRED]         │
+│ ├─ Current_Phase_B (A)                                 [REQUIRED]         │
+│ ├─ Current_Phase_C (A)                                 [REQUIRED]         │
+│ ├─ Motor_Speed (RPM)                                   [REQUIRED]         │
+│ ├─ Pressure_Bearing (PSI)                              [OPTIONAL]         │
+│ └─ Acoustic_Emission (dB or normalized)                [OPTIONAL]         │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ DL-05: Induction Motor (General Motor Faults, 7 Classes)                   │
+│ ├─ Vibration_X (2-channel, m/s²)                       [REQUIRED]         │
+│ ├─ Vibration_Y (2-channel, m/s²)                       [REQUIRED]         │
+│ ├─ Current_RMS (RMS of 3-phase, A)                     [REQUIRED]         │
+│ ├─ Temperature_Bearing (°C)                            [REQUIRED]         │
+│ ├─ Motor_Speed (RPM)                                   [OPTIONAL]         │
+│ └─ Power_Consumption (kW)                              [OPTIONAL]         │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ DL-06: Thermal Imaging (Thermal Anomalies & Overheating Detection)         │
+│ ├─ Temperature_Map (Thermal image / pixel matrix, °C)  [REQUIRED]         │
+│ ├─ Temperature_Bearing (Scalar, °C)                    [REQUIRED]         │
+│ ├─ Temperature_Motor_Winding (Scalar, °C)              [REQUIRED]         │
+│ ├─ Temperature_Ambient (Scalar, °C)                    [OPTIONAL]         │
+│ ├─ Thermal_Gradient (ΔT between hottest/coldest, °C)   [OPTIONAL]         │
+│ └─ Infrared_Intensity (Normalized, 0-1)                [OPTIONAL]         │
+└────────────────────────────────────────────────────────────────────────────┘
+
+
+UNIFIED SENSOR CONFIGURATION (All sensors that should be generated):
+═════════════════════════════════════════════════════════════════════
+
+PRIMARY SENSORS (Core for multiple models):
+  1. Vibration_X_Drive (m/s²)               — DL-01, DL-02, DL-04, DL-05
+  2. Vibration_Y_Drive (m/s²)               — DL-01, DL-02, DL-04, DL-05
+  3. Vibration_Z_Drive (m/s²)               — DL-01, DL-02, DL-04, DL-05
+  4. Current_Phase_A (A)                    — DL-03, DL-04, DL-05
+  5. Current_Phase_B (A)                    — DL-03, DL-04, DL-05
+  6. Current_Phase_C (A)                    — DL-03, DL-04, DL-05
+  7. Temperature_Bearing (°C)               — DL-02, DL-04, DL-05, DL-06
+  8. Motor_Speed (RPM)                      — DL-02, DL-04, DL-05
+
+SECONDARY SENSORS (Enhance accuracy):
+  9. Vibration_X_Fan (m/s²)                 — DL-01, DL-02, DL-04
+  10. Vibration_Y_Fan (m/s²)                — DL-01, DL-02, DL-04
+  11. Vibration_Z_Fan (m/s²)                — DL-01, DL-02, DL-04
+  12. Current_RMS (A)                       — DL-03, DL-05
+  13. Pressure_Bearing (PSI)                — DL-04
+  14. Temperature_Motor_Winding (°C)        — DL-06
+  15. Temperature_Ambient (°C)              — DL-06
+
+THERMAL/IMAGING SENSORS (For DL-06):
+  16. Temperature_Map (NxN pixel matrix, °C) — DL-06 (e.g., 64×64 thermal image)
+  17. Thermal_Gradient (°C)                 — DL-06
+
+OPTIONAL ADVANCED SENSORS (Future expansion):
+  18. Acoustic_Emission (dB)                — DL-04
+  19. Voltage_Phase_A (V)                   — DL-03
+  20. Voltage_Phase_B (V)                   — DL-03
+  21. Voltage_Phase_C (V)                   — DL-03
+  22. Power_Consumption (kW)                — DL-05
+  23. Power_Factor (dimensionless)          — DL-03
+
+
+SAMPLING CONFIGURATION:
+═══════════════════════
+
+Typical sampling rates by sensor type:
+  - Vibration sensors (accelerometers):  10 kHz to 100 kHz (typically 50 kHz)
+  - Current sensors (CT coils):          1 kHz to 10 kHz (typically 5 kHz)
+  - Temperature sensors (thermocouples): 10 Hz to 1 kHz (typically 100 Hz)
+  - Thermal imaging (IR camera):         10 Hz to 100 Hz (typically 30 FPS)
+  - Speed sensor (tachometer):           1 Hz to 1 kHz (typically 100 Hz)
+
+Recommended unified sampling: 10 kHz for vibration, with decimation for other sensors.
+
+Example data at time t (10 kHz sample):
+  [VibX_Drive=0.0234, VibY_Drive=0.0156, VibZ_Drive=0.0089,
+   VibX_Fan=0.0112, VibY_Fan=0.0098, VibZ_Fan=0.0076,
+   CurrA=12.3, CurrB=12.1, CurrC=12.2,
+   TempBearing=48.5, TempMotor=52.1, TempAmbient=25.0,
+   Speed=1495, Pressure=23.4, TempWinding=60.2]
+
+At time t+0.0001s (next 10 kHz sample):
+  [0.0245, 0.0168, 0.0091, 0.0118, 0.0105, 0.0081,
+   12.4, 12.2, 12.3, 48.6, 52.2, 25.0, 1496, 23.5, 60.3]
+
+Total sensor count: 15 primary + 8 secondary + 2 thermal + 6 optional = 31 possible sensors
+Minimum required: 8 (for DL-05 base model)
+Recommended: 15 (covers all 6 models well)
+Full capability: 23 (all sensors)
+
+
+STEP 2: Simulink Buffers Data & Calls MATLAB Function Block
+────────────────────────────────────────────────────────────
+When enough data is buffered (e.g., 1024 samples = ~0.02 seconds @ 50kHz):
+
+  function prediction = fcn(sensor_vector)
+      persistent client;
+
+      if isempty(client)
+          client = PredictiveMaintenanceClient('ws://localhost:8002');
+          client.connect();
+      end
+
+      if client.isConnected()
+          % Send buffered sensor array to API
+          pred = client.predict(sensor_vector);
+          prediction = pred.prediction;  % Return failure probability (0-1)
+      else
+          prediction = 0.5;  % Default if disconnected
+      end
+  end
+
+Output: Machine failure probability (0 = healthy, 1 = imminent failure)
+
+
+STEP 3: WebSocket Message Sent to Backend
+──────────────────────────────────────────
+The MATLAB client sends a JSON message over WebSocket:
+
+{
+  "type": "sensor_data",
+  "timestamp": "2026-02-12T18:30:45Z",
+  "client_id": "63210111-6263-43fd-a99b-1e362c8b43ef",
+  "machine_id": "MOTOR-001",
+  "sensor_data": [0.0234, 0.0156, 48.5, 12.3, 1495, 23.4],
+  "sensor_names": ["Vibration_X", "Vibration_Y", "Temp", "Current", "Speed", "Pressure"]
+}
+
+Network path: ws://localhost:8002/ws/simulink/{client_id}
+Latency: ~5-20 ms (local loopback)
+
+
+STEP 4: Backend Receives & Routes to Model
+───────────────────────────────────────────
+File: backend/app/api/websocket_handler.py
+
+The server:
+  1. Receives WebSocket message
+  2. Parses sensor_data and sensor_names
+  3. Identifies the appropriate DL model using machine_id metadata
+     (e.g., "MOTOR-001" → use DL-05 Induction Motor model)
+  4. Preprocesses sensor data (FFT, downsampling, normalization)
+  5. Runs inference on the selected model
+  6. Returns prediction + metadata
+
+
+STEP 5: Backend Returns Prediction Response
+─────────────────────────────────────────────
+JSON response sent back over WebSocket:
+
+{
+  "type": "prediction",
+  "timestamp": "2026-02-12T18:30:45Z",
+  "prediction": 0.87,                    // Failure probability (0-1)
+  "alert_level": "CRITICAL",             // NORMAL | WARNING | CRITICAL
+  "model_used": "DL-05_Induction_Motor",
+  "confidence": 0.94,
+  "inference_time_ms": 12.5
+}
+
+Latency: 10-30 ms (network + inference)
+Total round-trip: 20-50 ms
+
+
+STEP 6: MATLAB Client Receives & Updates Simulink
+──────────────────────────────────────────────────
+The callback in PredictiveMaintenanceClient.handleMessage():
+  - Stores prediction in last_prediction struct
+  - Logs to connection_log
+  - Returns to Simulink
+
+Simulink Scope/Dashboard now displays:
+  ┌─────────────────────────┐
+  │ Failure Probability     │
+  │ ████████░     87%       │  ← RED if alert_level = CRITICAL
+  │                         │
+  │ Alert: ⚠️  CRITICAL     │
+  │ Model: DL-05 (Induction)│
+  │ Latency: 12.5 ms        │
+  └─────────────────────────┘
+
+
+STEP 7: Data Logged to PostgreSQL
+──────────────────────────────────
+The backend also writes to database (async):
+
+  a) sensor_readings table:
+     INSERT INTO sensor_readings (
+       client_id, machine_id, timestamp, sensor_data, sensor_names
+     ) VALUES (...)
+
+  b) predictions_log table:
+     INSERT INTO predictions_log (
+       client_id, machine_id, timestamp, prediction, alert_level,
+       model_used, confidence, inference_time_ms
+     ) VALUES (...)
+
+
+STEP 8 (Optional): Simulink Sends Ground Truth
+───────────────────────────────────────────────
+After the virtual system detects an actual fault (e.g., bearing failure):
+
+  client.sendGroundTruth(true, 3, 'bearing_wear');
+  
+This sends:
+{
+  "type": "ground_truth",
+  "timestamp": "2026-02-12T18:35:45Z",
+  "actual_failure": 1,
+  "days_to_failure": 3,
+  "failure_type": "bearing_wear",
+  "machine_id": "MOTOR-001"
+}
+
+Backend stores in ground_truth table for later retraining.
+
+
+================================================================================
+3. SIMULINK MODEL INTEGRATION
+================================================================================
+
+Creating the Simulink Model: motor_virtual_system.slx
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  SIMULINK BLOCK DIAGRAM                                                     │
+│                                                                              │
+│  ┌──────────────┐         ┌──────────────┐       ┌────────────────────┐    │
+│  │ Clock        │────────▶│ Virtual Motor│──────▶│ Sensor Simulator   │    │
+│  │ (0 to 100s)  │         │ (ODEs)       │       │ (noise + scaling)  │    │
+│  └──────────────┘         └──────────────┘       └────────────────────┘    │
+│                                                           │                  │
+│                                                           ▼                  │
+│                                      ┌────────────────────────────────┐     │
+│                                      │ Buffer & Chunking              │     │
+│                                      │ (accumulate 1024 samples)      │     │
+│                                      └────────────────────────────────┘     │
+│                                                           │                  │
+│                                                           ▼                  │
+│                                      ┌────────────────────────────────┐     │
+│                                      │ MATLAB Function Block          │     │
+│                                      │ predict_maintenance()          │     │
+│                                      │ (calls PredictiveMaintenanceClient)  │
+│                                      └────────────────────────────────┘     │
+│                                                           │                  │
+│              ┌────────────────────────────────────────────┼─────┐            │
+│              │                                            │     │            │
+│              ▼                                            ▼     ▼            │
+│         ┌─────────────┐                          ┌──────────────┐            │
+│         │ Scope       │                          │ Alert Display│            │
+│         │ (waveforms) │                          │ (dashboard)  │            │
+│         └─────────────┘                          └──────────────┘            │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Key Simulink Blocks:
+
+  1. Clock Block
+     Output: Time (0 to 100 seconds or simulation duration)
+
+  2. Virtual Motor Block (subsystem or s-function)
+     - Differential equations: dx/dt = f(x, t)
+     - States: motor_speed, bearing_temp, bearing_wear, stator_current
+     - Outputs: All sensor readings at each time step
+     - At t=50s: inject bearing_wear_factor increase
+       (simulates degradation → fault detection test)
+
+  3. Sensor Simulator Block
+     - Input: Raw motor states
+     - Operations:
+       a) Add white noise (±2% of nominal value)
+       b) Scaling and unit conversion
+       c) Remove DC offset (vibration sensors)
+     - Output: 6-element sensor array
+
+  4. Buffer Block
+     - Input: Continuous sensor stream (every 0.001 s @ 1 kHz, or higher)
+     - Logic: Accumulate samples until N=1024
+     - Output: Every 1 second (at 1024 samples/s)
+
+  5. MATLAB Function Block: predict_maintenance
+     - Input: Buffered sensor vector (1×1024)
+     - Logic: Call PredictiveMaintenanceClient.predict()
+     - Output: Failure probability (0-1)
+
+  6. Alert Display Block (subsystem)
+     - Input: Failure probability + alert_level (from callback)
+     - Logic:
+       if prediction > 0.8: color = RED, alert = "CRITICAL"
+       elif prediction > 0.5: color = YELLOW, alert = "WARNING"
+       else: color = GREEN, alert = "NORMAL"
+     - Output: Visual indicator on dashboard
+
+
+Example MATLAB Function Block Code:
+
+  function [pred_probability, alert_level_out] = predict_maintenance(sensor_vector)
+      % PREDICT_MAINTENANCE integrates PredictiveMaintenanceClient
+      %
+      % Input:
+      %   sensor_vector: 1D array of buffered sensor readings (e.g., 1×1024)
+      %
+      % Output:
+      %   pred_probability: Failure probability (0-1)
+      %   alert_level_out: 0=GREEN, 1=YELLOW, 2=RED
+
+      persistent client initialized;
+
+      if ~islogical(initialized) || ~initialized
+          client = PredictiveMaintenanceClient('ws://localhost:8002', 'MOTOR-001');
+          try
+              client.connect();
+              initialized = true;
+          catch
+              warning('Failed to connect to API');
+              initialized = false;
+          end
+      end
+
+      % Default output if not connected
+      pred_probability = 0.5;
+      alert_level_out = 0;
+
+      if initialized && client.isConnected()
+          try
+              % Call predict with sensor data
+              pred = client.predict(sensor_vector);
+
+              % Extract results
+              pred_probability = pred.prediction;
+
+              % Map alert_level string to numeric
+              switch pred.alert_level
+                  case 'CRITICAL'
+                      alert_level_out = 2;
+                  case 'WARNING'
+                      alert_level_out = 1;
+                  otherwise
+                      alert_level_out = 0;
+              end
+
+          catch ME
+              warning('Prediction failed: %s', ME.message);
+              pred_probability = 0.5;
+              alert_level_out = 0;
+          end
+      end
+  end
+
+
+================================================================================
+4. MATLAB CLIENT CONFIGURATION
+================================================================================
+
+File: matlab_client/PredictiveMaintenanceClient.m
+
+Key Properties to Configure:
+
+  a) Server URL
+     client = PredictiveMaintenanceClient('ws://192.168.1.100:8002', 'MOTOR-001');
+     Or use default: client = PredictiveMaintenanceClient();
+
+  b) Machine ID
+     client.machine_id = 'MOTOR-TEST-001';
+
+  c) Configuration parameters (in obj.config struct):
+     - max_retries: 3 (connection attempts)
+     - timeout_sec: 30 (connection timeout)
+     - auto_reconnect: true (auto-reconnect on disconnect)
+     - log_messages: true (log all WebSocket messages)
+     - prediction_timeout_ms: 1000 (wait time for prediction response)
+
+Typical Usage Sequence:
+
+  % 1. Create client
+  client = PredictiveMaintenanceClient('ws://localhost:8002');
+
+  % 2. Connect
+  client.connect();
+
+  % 3. Loop: send predictions
+  for i = 1:num_iterations
+      sensor_data = [0.1, 0.2, 0.3, 0.4, 0.5];
+      pred = client.predict(sensor_data);
+
+      if strcmp(pred.alert_level, 'CRITICAL')
+          disp('⚠️  CRITICAL ALERT!');
+          % Trigger maintenance action
+      end
+  end
+
+  % 4. Periodically send ground truth
+  if fault_detected
+      client.sendGroundTruth(true, days_to_failure, 'bearing_wear');
+  end
+
+  % 5. Close when done
+  client.close();
+
+
+================================================================================
+5. API COMMUNICATION PROTOCOL
+================================================================================
+
+WebSocket Message Format:
+
+A. Sensor Data Request (Simulink → API)
+────────────────────────────────────────
+
+{
+  "type": "sensor_data",
+  "timestamp": "2026-02-12T18:30:45Z",
+  "client_id": "63210111-...",           // Unique session ID
+  "machine_id": "MOTOR-001",             // Equipment identifier
+  "sensor_data": [0.1, 0.2, 0.3, ...],  // Sensor readings (array)
+  "sensor_names": ["Vib_X", "Vib_Y", ...]  // Metadata (optional)
+}
+
+Response (API → Simulink):
+
+{
+  "type": "prediction",
+  "timestamp": "2026-02-12T18:30:45Z",
+  "prediction": 0.87,                    // Failure probability
+  "alert_level": "CRITICAL",             // NORMAL | WARNING | CRITICAL
+  "model_used": "DL-05_Induction_Motor",
+  "confidence": 0.94,                    // Model confidence
+  "inference_time_ms": 12.5              // Computation time
+}
+
+
+B. Ground Truth Message (Simulink → API)
+──────────────────────────────────────────
+
+{
+  "type": "ground_truth",
+  "timestamp": "2026-02-12T18:35:45Z",
+  "actual_failure": 1,                   // 0 or 1 (boolean)
+  "days_to_failure": 3,                  // Days until failure after prediction
+  "failure_type": "bearing_wear",        // Type of fault
+  "machine_id": "MOTOR-001"
+}
+
+Response (API → Simulink):
+
+{
+  "type": "ground_truth_ack",
+  "timestamp": "2026-02-12T18:35:46Z",
+  "status": "received"
+}
+
+
+C. Health Check (Simulink → API)
+─────────────────────────────────
+
+{
+  "type": "health_check",
+  "timestamp": "2026-02-12T18:40:00Z"
+}
+
+Response (API → Simulink):
+
+{
+  "type": "health_check_response",
+  "status": "healthy",
+  "server_time": "2026-02-12T18:40:01Z"
+}
+
+
+================================================================================
+6. DATA STORAGE & PERSISTENCE
+================================================================================
+
+PostgreSQL Database Schema:
+
+CREATE TABLE sensor_readings (
+  id SERIAL PRIMARY KEY,
+  client_id UUID,
+  machine_id VARCHAR(50),
+  timestamp TIMESTAMP,
+  sensor_data FLOAT8[],           -- Array of sensor values
+  sensor_names TEXT[],            -- Sensor name labels
+  sample_rate_hz INT,             -- Sampling rate
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE predictions_log (
+  id SERIAL PRIMARY KEY,
+  client_id UUID,
+  machine_id VARCHAR(50),
+  timestamp TIMESTAMP,
+  prediction FLOAT,               -- Failure probability (0-1)
+  alert_level VARCHAR(20),        -- NORMAL | WARNING | CRITICAL
+  model_used VARCHAR(100),        -- Model ID (e.g., DL-05_Induction)
+  confidence FLOAT,               -- Model confidence
+  inference_time_ms FLOAT,        -- Inference duration
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE ground_truth (
+  id SERIAL PRIMARY KEY,
+  client_id UUID,
+  machine_id VARCHAR(50),
+  timestamp TIMESTAMP,
+  actual_failure INT,             -- 0 or 1
+  days_to_failure INT,            -- Days until failure
+  failure_type VARCHAR(100),      -- Type of failure
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE model_versions (
+  id SERIAL PRIMARY KEY,
+  model_id VARCHAR(100),          -- e.g., DL-05_Induction_Motor
+  version INT,
+  training_date TIMESTAMP,
+  validation_accuracy FLOAT,
+  f1_score FLOAT,
+  deployed BOOLEAN,
+  deployment_date TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+
+Data Write Flow:
+
+  1. MATLAB sends sensor_data via WebSocket
+  2. Backend receives in websocket_handler.py
+  3. Async write to sensor_readings table
+  4. Backend runs inference on DL model
+  5. Async write to predictions_log table
+  6. Response sent back to MATLAB client (fast)
+  7. If client sends ground_truth message, write to ground_truth table
+
+Retention Policy:
+  - sensor_readings: 90 days (due to storage)
+  - predictions_log: 180 days (for auditing)
+  - ground_truth: Indefinite (for retraining)
+  - model_versions: Indefinite (for version control)
+
+
+================================================================================
+7. GROUND TRUTH COLLECTION
+================================================================================
+
+The ground truth mechanism enables continuous model improvement.
+
+How it works:
+
+  STEP 1: Virtual System Detects Fault
+  ────────────────────────────────────
+  At t=50s in simulation:
+    - Bearing wear factor increases
+    - Vibration amplitude spikes
+    - Motor temperature rises
+    - System triggers: fault_detected = true
+
+  STEP 2: Simulink Records Ground Truth
+  ──────────────────────────────────────
+  % In Simulink model:
+  if fault_detected && ~ground_truth_sent
+      days_to_failure = ...;  % Time from prediction to actual fault
+      client.sendGroundTruth(true, days_to_failure, 'bearing_wear');
+      ground_truth_sent = true;
+  end
+
+  STEP 3: Backend Logs to Database
+  ─────────────────────────────────
+  Ground truth stored in PostgreSQL ground_truth table.
+
+  STEP 4: Weekly Retraining Pipeline
+  ───────────────────────────────────
+
+  Every Sunday 2:00 AM:
+    a) Aggregate ground_truth + sensor_readings (past 7 days)
+    b) Create balanced training dataset
+    c) Retrain all 6 DL models
+    d) Validate on holdout test set
+    e) A/B test with 10% production traffic
+    f) If metrics improve, promote to 100% traffic
+
+  Example script: backend/scripts/retrain_weekly.py
+
+  Metrics tracked:
+    - Precision (false alarm rate)
+    - Recall (missed faults)
+    - F1-score (harmonic mean)
+    - ROC-AUC
+    - Time-to-detection (RUL estimation)
+
+
+Benefits:
+  - Models learn from actual virtual system failures
+  - Continuous feedback loop improves accuracy
+  - Prevents model drift over time
+
+
+================================================================================
+8. REAL-TIME MONITORING & VISUALIZATION
+================================================================================
+
+Simulink Dashboard Setup:
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      PREDICTIVE MAINTENANCE DASHBOARD                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────────────┐      ┌──────────────────────┐                    │
+│  │  MOTOR STATUS        │      │  FAILURE PROBABILITY │                    │
+│  │                      │      │                      │                    │
+│  │  Machine: MOTOR-001  │      │  ████████░     87%   │  ← Alert!         │
+│  │  Status: CONNECTED   │      │                      │                    │
+│  │  Health: ⚠️ WARNING   │      │  Alert Level: ⚠️ RED │                    │
+│  └──────────────────────┘      └──────────────────────┘                    │
+│                                                                              │
+│  ┌──────────────────────┐      ┌──────────────────────┐                    │
+│  │  INFERENCE METRICS   │      │  SENSOR DATA (6x)    │                    │
+│  │                      │      │                      │                    │
+│  │  Latency: 12.5 ms    │      │  VibX:     0.045     │                    │
+│  │  Model: DL-05        │      │  VibY:     0.032     │                    │
+│  │  Confidence: 94%     │      │  Temp:    52.3 °C    │                    │
+│  │  Uptime: 45 min      │      │  Current: 14.2 A     │                    │
+│  └──────────────────────┘      │  Speed:  1510 RPM    │                    │
+│                                │  Pressure: 25 PSI    │                    │
+│                                └──────────────────────┘                    │
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │  WAVEFORM: Failure Probability Over Time                            │  │
+│  │                                                                      │  │
+│  │      1.0 ┌─────────────────────────────────────────────────────┐   │  │
+│  │          │                                      ╱─────────     │   │  │
+│  │      0.8 │                                  ╱──              │   │  │
+│  │          │                             ╱──                  │   │  │
+│  │      0.6 │      ╱─────╲              ╱                      │   │  │
+│  │          │  ╱──              ╲  ╱─                           │   │  │
+│  │      0.4 │╱                    ╱                             │   │  │
+│  │          │                                                   │   │  │
+│  │      0.2 │──────                                            │   │  │
+│  │          │                                                   │   │  │
+│  │      0.0 └─────────────────────────────────────────────────────┘   │  │
+│  │          0 min        10 min      20 min      30 min      40 min   │  │
+│  │                                                                      │  │
+│  │  ⚠️ Alert detected at t=35 min (prob=0.87)                       │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+Implementation in Simulink:
+
+  1. Create a new Simulink model dashboard using Dashboard Blocks:
+     - Gauge (for failure probability)
+     - Light (for alert level indicator)
+     - Digital Display (for sensor values & latency)
+     - Time Scope (for waveform history)
+
+  2. Connect signals from MATLAB Function Block outputs to dashboard blocks
+
+  3. Add conditional logic for color changes:
+     if prediction > 0.8
+         gauge_color = RED
+     else if prediction > 0.5
+         gauge_color = YELLOW
+     else
+         gauge_color = GREEN
+
+  4. Log all signals to a .mat file for post-simulation analysis:
+     - Signal: struct with time, sensor_data, predictions, alerts
+
+
+================================================================================
+9. STEP-BY-STEP IMPLEMENTATION ROADMAP
+================================================================================
+
+PHASE 1: Setup & Configuration (Week 1)
+────────────────────────────────────────
+
+  Step 1.1: Verify Python Backend is Running
+    $ python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8002
+    Expected: "Application startup complete"
+
+  Step 1.2: Test MATLAB Client Connection
+    In MATLAB:
+      >> client = PredictiveMaintenanceClient();
+      >> client.connect();
+      >> client.healthCheck();
+    Expected: "[OK] API is healthy"
+
+  Step 1.3: Load Virtual Motor Model (or create one)
+    In Simulink:
+      - Open or create: motor_virtual_system.slx
+      - Verify: Clock block outputs 0 to 100 seconds
+      - Verify: Motor subsystem outputs 6 sensors
+
+  Step 1.4: Test Sensor Data Path
+    Add a MATLAB Function Block that reads sensors and logs to file:
+      function log_data(sensors)
+          persistent fid
+          if isempty(fid)
+              fid = fopen('sensor_log.txt', 'w');
+          end
+          fprintf(fid, '%f ', sensors);
+          fprintf(fid, '\n');
+      end
+    Run simulation, verify file has 100+ lines of sensor data.
+
+
+PHASE 2: Simulink Integration (Week 2)
+───────────────────────────────────────
+
+  Step 2.1: Add Buffer Block to Simulink
+    - Input: Continuous sensor stream (e.g., every 0.01 seconds)
+    - Buffer size: 1024 samples
+    - Output: 1 vector per second (approx 100 buffering cycles)
+
+  Step 2.2: Implement predict_maintenance MATLAB Function Block
+    - Copy code from Section 4 (example)
+    - Input: Buffered sensor vector
+    - Output: Failure probability + alert level
+
+  Step 2.3: Add Alert Display Subsystem
+    - Input: Prediction probability
+    - Logic: Color change (GREEN → YELLOW → RED)
+    - Display: Simulink Scope or Dashboard gauge
+
+  Step 2.4: Test Full Simulation (10 seconds with synthetic data)
+    - Run Simulink model
+    - Watch Command Window for "[SEND]" and "[RECEIVED]" logs
+    - Verify prediction is returned (not timeout)
+    - Verify alert displays correctly
+
+
+PHASE 3: Ground Truth & Database (Week 3)
+──────────────────────────────────────────
+
+  Step 3.1: Set Up PostgreSQL Database
+    $ psql -U postgres -d maintenance_db -f create_schema.sql
+    Verify: SELECT * FROM predictions_log LIMIT 5;  (should be empty)
+
+  Step 3.2: Implement Fault Injection in Virtual System
+    At t=50s in simulation:
+      fault_factor(t) = 0  (healthy)
+      fault_factor(t>50) = sin(t) * 10  (bearing degradation)
+    This causes sensor values to deviate toward failure.
+
+  Step 3.3: Add Ground Truth Message in Simulink
+    When virtual system detects fault:
+      if vibration > threshold && temperature > max_temp
+          client.sendGroundTruth(true, 3, 'bearing_wear');
+      end
+
+  Step 3.4: Verify Database Writes
+    $ SELECT COUNT(*) FROM predictions_log;
+    Expect: 100+ rows after a 1-minute simulation
+
+
+PHASE 4: Visualization & Monitoring (Week 4)
+─────────────────────────────────────────────
+
+  Step 4.1: Create Simulink Dashboard
+    - Add Gauge (failure probability)
+    - Add Light (alert level indicator)
+    - Add Digital Display (latency, model name)
+    - Add Time Scope (waveform history)
+
+  Step 4.2: Add Logging to .mat File
+    - Use "To File" block to log:
+      [time, sensor_data, prediction, alert_level]
+
+  Step 4.3: Post-Simulation Analysis Script
+    analysis_results = load('simulation_log.mat');
+    figure;
+    subplot(2,1,1); plot(analysis_results.time, analysis_results.sensor_data);
+    subplot(2,1,2); plot(analysis_results.time, analysis_results.prediction);
+    title('Predictive Maintenance Simulation Results');
+
+  Step 4.4: Validate Against Real Faults
+    - Compare prediction timing against actual fault occurrence time
+    - Calculate time-to-detection (TTD)
+    - Report metrics: Precision, Recall, F1-score
+
+
+================================================================================
+10. TESTING & VALIDATION CHECKLIST
+================================================================================
+
+Before deploying to production, verify:
+
+CONNECTIVITY TESTS
+──────────────────
+☐ MATLAB client can instantiate: PredictiveMaintenanceClient()
+☐ Client can connect: client.connect() (check is_connected flag)
+☐ Health check passes: client.healthCheck()
+☐ WebSocket message sending works (check backend logs)
+
+INFERENCE TESTS
+───────────────
+☐ Prediction returns valid probability (0-1)
+☐ Alert level is one of: NORMAL, WARNING, CRITICAL
+☐ Latency is under 50ms (typical: 10-30ms)
+☐ Confidence score is reasonable (>0.7 is good)
+
+DATA FLOW TESTS
+───────────────
+☐ Sensor data correctly formatted: 1×N array
+☐ Sensor names match sensor data (same count)
+☐ Timestamp is in ISO8601 format
+☐ Client ID is UUID (unique per connection)
+☐ Machine ID is non-empty string
+
+DATABASE TESTS
+──────────────
+☐ Sensor readings appear in prediction_log table
+☐ Ground truth messages are persisted
+☐ Records have correct timestamp
+☐ No NULL values in critical fields
+
+SIMULINK INTEGRATION TESTS
+──────────────────────────
+☐ Virtual motor model runs for full 100 seconds
+☐ Sensors output 6 values per time step
+☐ MATLAB Function Block receives buffered data
+☐ Prediction displays on Scope/Dashboard
+☐ Alert threshold triggers correctly (prediction > 0.8)
+☐ Simulation completes without MATLAB errors
+
+END-TO-END TEST (Full Scenario)
+───────────────────────────────
+☐ Start Python backend
+☐ Run Simulink model for 60 seconds
+☐ Inject fault at t=30s
+☐ Verify prediction rises above threshold
+☐ Verify alert displays
+☐ Send ground truth message
+☐ Stop simulation
+☐ Query database: SELECT * FROM ground_truth;
+☐ Verify 1 row was inserted with correct fault type
+
+PERFORMANCE TESTS
+─────────────────
+☐ Simulate for 1 minute without memory leaks
+☐ Latency average < 30ms (measure 100 predictions)
+☐ DB writes don't block API (use async)
+☐ Multiple simultaneous clients work (if applicable)
+
+RELIABILITY TESTS
+─────────────────
+☐ Reconnect after network disconnect
+☐ Graceful fallback if model unavailable
+☐ Timeout handling when API doesn't respond
+☐ Clear error messages in Command Window
+
+
+================================================================================
+                              CONCLUSION
+================================================================================
+
+This implementation guide provides the complete data flow from virtual motor
+sensors through MATLAB/Simulink to the predictive maintenance API and back.
+
+Key takeaways:
+
+  1. Virtual motor generates sensor data (6 channels @ 50 kHz)
+  2. Simulink buffers data and sends to API via WebSocket
+  3. Backend runs inference on 6 DL models (< 30 ms)
+  4. Prediction + alert returned to Simulink (round-trip < 50 ms)
+  5. All data persisted in PostgreSQL for auditing & retraining
+  6. Weekly pipeline retrains models with ground truth feedback
+  7. A/B testing ensures model quality before deployment
+
+Expected timeline: 4 weeks (PHASE 1-4)
+Expected learning curve: 1-2 weeks
+Expected production readiness: Week 5
+
+
+Questions? Refer to:
+  - MATLAB docs: matlab_client/Matlab_docs/README.md
+  - API docs: docs/API_KEY_AUTH.md
+  - Architecture: docs/architecture_recommendation.md
+  - Quick start: docs/MATLAB_INTEGRATION_QUICK_START.md
+
+================================================================================
+Document created: February 12, 2026
+Version: 1.0
+Author: Digital Twin Predictive Maintenance Team
+================================================================================

@@ -1,0 +1,861 @@
+================================================================================
+                  COMPLETE IMPLEMENTATION CHECKLIST
+                Digital Twin Predictive Maintenance System
+                         February 12, 2026
+================================================================================
+
+This checklist tracks every implementation step with explicit markers for
+Simulink Function Blocks, database scripts, and verification points.
+
+================================================================================
+PHASE 1: SETUP & VERIFICATION (Week 1)  [ESTIMATED TIME: 3-5 hours]
+================================================================================
+
+PART 1.1: Backend Verification
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+☐ Step 1.1.1: Server is running on port 8002
+   Location: PowerShell terminal
+   Command: python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8002
+   Expected output: "Application startup complete"
+   Status: ✓ VERIFIED (from terminal context)
+
+☐ Step 1.1.2: Server logs show model loading progress
+   What to look for: "Loading: [████░░░░░░░░░░]"
+   Completion message: "✓ Server Health ACTIVE"
+   Expected: Takes 30-60 seconds
+   Status: ✓ VERIFIED (from terminal context)
+
+☐ Step 1.1.3: Test API health endpoint
+   In Python:
+   ```python
+   import requests
+   response = requests.get('http://localhost:8002/health')
+   print(response.json())
+   ```
+   Expected: {"status": "healthy", "models_loaded": true}
+
+☐ Step 1.1.4: Confirm WebSocket endpoint is available
+   In MATLAB:
+   ```matlab
+   client = PredictiveMaintenanceClient();
+   % Should create: server_url = 'ws://localhost:8002'
+   client.machine_id = 'MOTOR-TEST-001'
+   ```
+   Expected: No errors, client object created
+   Status: ✓ VERIFIED (user ran this successfully)
+
+
+PART 1.2: MATLAB Client Verification
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+☐ Step 1.2.1: MATLAB client instantiation
+   In MATLAB:
+   ```matlab
+   >> client = PredictiveMaintenanceClient();
+   [INFO] server_url not provided — defaulting to ws://localhost:8002
+   
+   ans = PredictiveMaintenanceClient with properties:
+   ...
+   Status: ✓ VERIFIED (user confirmed successful instantiation)
+
+☐ Step 1.2.2: Client connection test
+   In MATLAB:
+   ```matlab
+   >> client.connect();
+   [CONNECTING] ws://localhost:8002/ws/simulink/...
+   [SUCCESS] ✓ Connected to API
+   ```
+   Expected: Connection successful
+   Verify: client.is_connected == 1
+
+☐ Step 1.2.3: Health check
+   In MATLAB:
+   ```matlab
+   >> client.healthCheck();
+   [HEALTH CHECK] Sent
+   [OK] API is healthy
+   ```
+   Expected: Health check passes
+
+☐ Step 1.2.4: Quick prediction test
+   In MATLAB:
+   ```matlab
+   >> sensor_data = [0.1, 0.2, 0.3, 0.4, 0.5];
+   >> pred = client.predict(sensor_data);
+   >> disp(pred)
+   ```
+   Expected: Returns struct with prediction, alert_level, confidence, etc.
+
+☐ Step 1.2.5: Print statistics
+   In MATLAB:
+   ```matlab
+   >> client.printStats();
+   ```
+   Expected: Shows connected status, samples sent, predictions received
+
+☐ Step 1.2.6: Close connection gracefully
+   In MATLAB:
+   ```matlab
+   >> client.close();
+   [CLOSED] ✓ Disconnected from API
+   ```
+   Expected: Clean disconnect
+
+
+PART 1.3: Virtual Motor Model (Simulink)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+☐ Step 1.3.1: Create or load Simulink model
+   File: motor_virtual_system.slx (or existing model)
+   Location: matlab_client/ or your preferred location
+   
+   Blocks to include:
+   ├─ Clock (Time: 0-100 seconds)
+   ├─ Virtual Motor (state-space or custom s-function)
+   ├─ Sensor Simulator (noise, scaling)
+   ├─ Multiplexer (combine all sensor outputs)
+   └─ Scope (display sensor waveforms)
+
+☐ Step 1.3.2: Verify Clock block
+   Output: Continuous time 0 to 100 seconds
+   Sample time: 0.001 seconds (1 kHz base rate)
+   Expected: Ramp signal from 0 to 100
+
+☐ Step 1.3.3: Verify Virtual Motor block
+   Implements: dx/dt = f(x, u, t)
+   Outputs: 15 sensor signals (or subset used)
+   States:
+   - motor_speed (RPM)
+   - bearing_temperature (°C)
+   - bearing_wear (0-1 scale)
+   - stator_current (A)
+   - vibration_x, vibration_y, vibration_z (m/s²)
+   Expected: Non-zero continuous outputs
+
+☐ Step 1.3.4: Verify Sensor Simulator block
+   Input: Raw motor states (7 values)
+   Processing:
+   - Add white noise (±2-5% of nominal)
+   - Scale to physical units
+   - Remove DC offset (vibration only)
+   Output: 15 sensor readings
+   Expected: Realistic noisy signal
+
+☐ Step 1.3.5: Test model run (1 second)
+   In Simulink:
+   - Set Stop Time: 1
+   - Click "Run" (Ctrl+T)
+   - Open Scope (double-click Scope block)
+   Expected: See 6-15 waveforms without errors
+   Duration: ~5-10 seconds simulation time
+
+
+PART 1.4: Virtual System Sensor Data Logging
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+☐ Step 1.4.1: Add logging function block to Simulink
+   [SIMULINK FUNCTION BLOCK REQUIRED]
+   
+   Name: Log_Sensor_Data
+   Type: MATLAB Function Block
+   Input: sensor_vector (1×15 array)
+   Processing:
+   - Writes to file: sensor_log.txt
+   - Appends each sample: "value1 value2 ... valueN"
+   
+   Code template:
+   ```matlab
+   function log_data(sensors)
+       persistent fid
+       if isempty(fid)
+           fid = fopen('sensor_log.txt', 'w');
+       end
+       fprintf(fid, '%f ', sensors);
+       fprintf(fid, '\n');
+   end
+   ```
+   
+   Block location: Insert between Mux and Scope
+
+☐ Step 1.4.2: Run simulation for 10 seconds
+   Stop Time: 10
+   Sample rate: 1 kHz (every 0.001 s)
+   Expected: 10,000 lines in sensor_log.txt
+
+☐ Step 1.4.3: Verify log file format
+   Command (MATLAB):
+   ```matlab
+   >> data = readmatrix('sensor_log.txt');
+   >> size(data)
+   ans = 10000 15    % 10,000 samples × 15 sensors
+   >> head(data, 3)
+   ```
+   Expected: 3 rows × 15 columns of sensor values
+
+
+STATUS OF PHASE 1:
+✓ Backend running       [DONE]
+✓ MATLAB client ready   [DONE]
+✓ Models configured    [DONE]
+⚠ Simulink model       [NEEDS USER CREATION]
+
+
+================================================================================
+PHASE 2: SIMULINK INTEGRATION (Week 2)  [ESTIMATED TIME: 5-8 hours]
+================================================================================
+
+PART 2.1: Neural Interface Layer - Buffering
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+☐ Step 2.1.1: Add Buffer block to Simulink
+   [SIMULINK STANDARD BLOCK]
+   
+   Block type: Signal Processing → Buffers → Buffer
+   Input: sensor_vector (from Multiplexer, 1 sample/time step)
+   Output size: 1024 samples (or 512)
+   Overlap: 0 (no overlap)
+   
+   Configuration:
+   - Buffer length: 1024
+   - Input processing: Processes one sample at a time
+   - Output: Column vector [1024x1]
+   - Triggers output when buffer full
+   
+   Location: Between Mux and MATLAB Function Block
+
+☐ Step 2.1.2: Configure buffering sample rate
+   At 1 kHz input: 1024 samples = 1.024 seconds
+   Output rate: ~1 prediction per second
+   Note: Can adjust buffer size for different latency:
+   - 256 samples = 0.256 sec (more responsive)
+   - 512 samples = 0.512 sec (balanced)
+   - 1024 samples = 1.024 sec (more stable)
+
+☐ Step 2.1.3: Test buffer block output
+   Add Scope block after Buffer
+   Run simulation for 5 seconds
+   Expected: 5 buffers (each a column of 1024 values)
+
+
+PART 2.2: Prediction Interface - MATLAB Function Block
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+☐ Step 2.2.1: Create predict_maintenance function block
+   [SIMULINK FUNCTION BLOCK REQUIRED] *** CRITICAL ***
+   
+   Block type: MATLAB Function (Simulink Editor → Library → MATLAB Function)
+   Name: predict_maintenance
+   
+   INPUTS:
+   - sensor_buffer: (1024×1) buffered sensor data
+   
+   OUTPUTS:
+   - pred_probability: (1×1) failure probability 0-1
+   - alert_level_out: (1×1) numeric: 0=GREEN, 1=YELLOW, 2=RED
+   - confidence_out: (1×1) confidence score
+   - latency_ms: (1×1) inference time in milliseconds
+   
+   Function body (paste into block):
+   ═════════════════════════════════════════════════════════════────────
+   function [pred_probability, alert_level_out, confidence_out, latency_ms] = ...
+       predict_maintenance(sensor_buffer)
+       
+       persistent client connected initialized
+       
+       % One-time initialization
+       if isempty(initialized)
+           client = PredictiveMaintenanceClient('ws://localhost:8002', 'MOTOR-TEST-001');
+           connected = 0;
+           initialized = true;
+       end
+       
+       % Try to connect on first call if not connected
+       if ~connected
+           try
+               client.connect();
+               connected = 1;
+           catch
+               connected = 0;
+           end
+       end
+       
+       % Default outputs if not connected
+       pred_probability = 0.5;
+       alert_level_out = 0;      % GREEN (safe default)
+       confidence_out = 0.0;
+       latency_ms = 0.0;
+       
+       % If connected, send prediction request
+       if connected
+           try
+               % Create sensor names (example)
+               sensor_names = {'VibX','VibY','VibZ','CurrA','CurrB',...
+                               'CurrC','TempB','Speed','VibXF','VibYF',...
+                               'VibZF','Pressure','TempW','TempA','CurrRMS'};
+               
+               % Send prediction
+               t_start = tic;
+               pred = client.predict(sensor_buffer', sensor_names);
+               latency_ms = toc(t_start) * 1000;
+               
+               % Extract results
+               pred_probability = pred.prediction;
+               confidence_out = pred.confidence;
+               
+               % Map alert level string to numeric
+               switch pred.alert_level
+                   case 'CRITICAL'
+                       alert_level_out = 2;  % RED
+                   case 'WARNING'
+                       alert_level_out = 1;  % YELLOW
+                   otherwise
+                       alert_level_out = 0;  % GREEN
+               end
+               
+           catch ME
+               % Graceful error handling
+               warning(['Prediction failed: ' ME.message]);
+               pred_probability = 0.5;
+               alert_level_out = 0;
+               confidence_out = 0.0;
+           end
+       end
+   end
+   ═════════════════════════════════════════════════════════════════════
+
+☐ Step 2.2.2: Connect buffer output to function block
+   Simulink connections:
+   Buffer (output) → predict_maintenance (sensor_buffer input)
+
+☐ Step 2.2.3: Test function block with simulation
+   Run simulation for 10 seconds
+   Watch MATLAB Command Window for:
+   [SEND] sensor_data message
+   [RECEIVED] Type: prediction
+   Expected: At least 10 predictions (one per buffer cycle)
+
+☐ Step 2.2.4: Verify prediction outputs in Scope
+   Add 4 Scope blocks for outputs:
+   - pred_probability (should oscillate 0-1)
+   - alert_level_out (should be 0, 1, or 2)
+   - confidence_out (0-1)
+   - latency_ms (typical 10-30ms)
+
+
+PART 2.3: Alert Display & Status
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+☐ Step 2.3.1: Create alert display function block
+   [SIMULINK FUNCTION BLOCK REQUIRED]
+   
+   Name: Alert_Display
+   Input: alert_level (0/1/2), pred_probability
+   Output: color (for dashboard indicator)
+   
+   Code:
+   ```matlab
+   function display_alert(alert_level, probability)
+       % Determine alert status
+       if alert_level == 2
+           alert_text = '⚠️  CRITICAL';
+           color_rgb = [1, 0, 0];  % RED
+           % TRIGGER MAINTENANCE ACTION HERE
+       elseif alert_level == 1
+           alert_text = '⚠️  WARNING';
+           color_rgb = [1, 1, 0];  % YELLOW
+           % LOG WARNING
+       else
+           alert_text = '✓ NORMAL';
+           color_rgb = [0, 1, 0];  % GREEN
+       end
+       
+       % Display to console (or dashboard)
+       fprintf('[%s] Prob: %.2f%%\n', alert_text, probability*100);
+   end
+   ```
+
+☐ Step 2.3.2: Add light indicator to dashboard
+   [SIMULINK DASHBOARD BLOCK REQUIRED]
+   
+   Block type: Dashboard → Lights → Lamp
+   Input: alert_level_out (0, 1, or 2)
+   Colors:
+   - Green (0 = normal)
+   - Yellow (1 = warning)
+   - Red (2 = critical)
+   
+   Configuration:
+   - Lamp type: Circular
+   - Thresholds: [0.5, 1.5] (separates 0, 1, 2)
+   - Colors: Green, Yellow, Red
+
+☐ Step 2.3.3: Add gauge for probability display
+   [SIMULINK DASHBOARD BLOCK REQUIRED]
+   
+   Block type: Dashboard → Gauges → Circular Gauge
+   Input: pred_probability (0-1)
+   Display range: 0 to 1
+   Label: "Failure Probability"
+   
+   Color zones (optional):
+   - 0.0-0.4: Green
+   - 0.4-0.8: Yellow
+   - 0.8-1.0: Red
+
+
+PART 2.4: Full Simulation Test
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+☐ Step 2.4.1: Configure simulation parameters
+   Stop time: 60 seconds (full 1-minute test)
+   Sample time: 0.001 (1 kHz)
+   Solver: ode45 or ode23t (for stiff systems)
+   Max step size: 0.001
+
+☐ Step 2.4.2: Run full simulation
+   In Simulink:
+   - Click "Run" (Ctrl+T)
+   - Duration: ~60 seconds of simulation
+   - Observe: Predictions updating on gauge & lamp every 1 second
+
+☐ Step 2.4.3: Monitor Command Window
+   Expected log messages:
+   [SEND] sensor_data message (every 1 second × 60 = ~60 total)
+   [RECEIVED] Type: prediction (every 1 second × 60 = ~60 total)
+   Average latency: 15-30ms
+   Errors: None
+
+☐ Step 2.4.4: Verify alert thresholds
+   At t=30s: Inject fault (bearing degradation starts)
+   Expected behavior:
+   - Predictions rise gradually
+   - At prediction ≈ 0.5: alert_level → 1 (YELLOW lamp)
+   - At prediction ≈ 0.8: alert_level → 2 (RED lamp)
+   - Command: "⚠️ CRITICAL" message
+
+☐ Step 2.4.5: Save simulation results
+   Add "To File" block to save outputs:
+   Outputs: [time, pred_probability, alert_level, latency_ms]
+   File: simulation_results_phase2.mat
+
+
+STATUS OF PHASE 2:
+✓ Buffer block         [READY]
+✓ Prediction block     [READY - CODE PROVIDED]
+✓ Alert display        [READY - CODE PROVIDED]
+✓ Dashboard indicators [READY - BLOCKS PROVIDED]
+⚠ Full test run       [NEEDS USER EXECUTION]
+
+
+================================================================================
+PHASE 3: DATABASE & GROUND TRUTH (Week 3)  [ESTIMATED TIME: 4-6 hours]
+================================================================================
+
+PART 3.1: PostgreSQL Database Setup
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+☐ Step 3.1.1: Create PostgreSQL database
+   Command:
+   ```sql
+   createdb maintenance_db -U postgres
+   ```
+   Expected: Database created successfully
+
+☐ Step 3.1.2: Run SQL schema script
+   File: create_database_schema.sql (provided in matlab_client/Matlab_docs)
+   
+   Command:
+   ```bash
+   psql -U postgres -d maintenance_db -f create_database_schema.sql
+   ```
+   
+   Creates tables:
+   - sensor_readings (Raw sensor data)
+   - predictions_log (Model predictions)
+   - ground_truth (Actual failure outcomes)
+   - model_versions (Trained model metadata)
+
+☐ Step 3.1.3: Verify table creation
+   Command:
+   ```sql
+   \dt
+   ```
+   Expected output:
+   ```
+   public | ground_truth     | table
+   public | model_versions   | table
+   public | predictions_log  | table
+   public | sensor_readings  | table
+   ```
+
+☐ Step 3.1.4: Verify table schemas
+   Command:
+   ```sql
+   SELECT COUNT(*) FROM predictions_log;
+   ```
+   Expected: 0 rows (empty table)
+
+
+PART 3.2: Fault Injection in Virtual System
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+☐ Step 3.2.1: Modify bearing_wear state equation
+   [SIMULINK FUNCTION BLOCK OR STATE-SPACE MODIFICATION]
+   
+   In Virtual Motor block (or create new s-function):
+   
+   Current: bearing_wear(t) = constant (no degradation)
+   
+   Modify to:
+   ```
+   if t < 30
+       fault_factor = 0         ← Healthy phase
+   else if t < 40
+       fault_factor = (t-30)/10 ← Gradual degradation
+   else
+       fault_factor = 1         ← Full fault
+   end
+   
+   bearing_wear'(t) = fault_factor * 0.1  ← Degradation rate
+   ```
+   
+   Effect: At t=30s, degradation begins; at t=40s, severe fault
+
+☐ Step 3.2.2: Link fault to sensor outputs
+   Modify sensor generation to amplify:
+   - Vibration (add harmonics)
+   - Temperature (increase gradually)
+   - Current (increase slightly)
+   
+   Example (add to Sensor Simulator):
+   ```
+   if fault_factor > 0
+       vibration_output *= (1 + fault_factor * 5)    ← 5x amplification at full fault
+       temperature_output += fault_factor * 30       ← +30°C at full fault
+   end
+   ```
+
+☐ Step 3.2.3: Add fault detection flag
+   [SIMULINK FUNCTION BLOCK REQUIRED]
+   
+   Create: Detect_Fault
+   Inputs: vibration, temperature, current
+   Output: fault_detected (boolean)
+   
+   Logic:
+   ```matlab
+   function fault_detected = detect_fault(vib, temp, curr)
+       if vib > 1.0 && temp > 70
+           fault_detected = 1;
+       else
+           fault_detected = 0;
+       end
+   end
+   ```
+
+☐ Step 3.2.4: Test fault injection
+   Run simulation for 60 seconds
+   Expected at t=30s:
+   - Vibration increases sharply
+   - Temperature rises
+   - Predictions increase to 0.7-0.9
+   - Lamp turns RED
+
+
+PART 3.3: Ground Truth Collection
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+☐ Step 3.3.1: Create ground truth logging block
+   [SIMULINK FUNCTION BLOCK REQUIRED]
+   
+   Name: Log_Ground_Truth
+   Inputs:
+   - fault_detected (boolean)
+   - time_sim (current simulation time)
+   - failure_type (string)
+   
+   Code:
+   ```matlab
+   function log_ground_truth(fault_detected, time_sim, failure_type)
+       persistent last_fault_time fault_sent
+       
+       if isempty(last_fault_time)
+           last_fault_time = 0;
+           fault_sent = false;
+       end
+       
+       if fault_detected && ~fault_sent
+           % Calculate days to failure (normalized: 1 day = 10 sim seconds)
+           days_to_failure = (60 - time_sim) / 10;
+           
+           % Create client if not exists
+           persistent client
+           if isempty(client)
+               client = PredictiveMaintenanceClient('ws://localhost:8002');
+               client.connect();
+           end
+           
+           % Send ground truth
+           try
+               client.sendGroundTruth(1, days_to_failure, failure_type);
+               disp('[GROUND TRUTH] Sent to API');
+               fault_sent = true;
+           catch ME
+               warning(ME.message);
+           end
+       end
+   end
+   ```
+
+☐ Step 3.3.2: Connect ground truth block to Simulink
+   Inputs:
+   - fault_detected (from Detect_Fault block)
+   - time (from Clock block)
+   - Constant block with string 'bearing_wear'
+
+☐ Step 3.3.3: Run simulation with ground truth
+   Stop time: 60 seconds
+   Fault injection at: t=30s
+   Expected ground truth message around t=35-40s
+
+☐ Step 3.3.4: Verify database persistence
+   Command:
+   ```sql
+   SELECT COUNT(*) FROM ground_truth;
+   ```
+   Expected: 1 row (or more if multiple runs)
+   
+   Query details:
+   ```sql
+   SELECT * FROM ground_truth LIMIT 1;
+   ```
+   Expected columns:
+   - actual_failure: 1
+   - days_to_failure: reasonable value (1-5 days)
+   - failure_type: 'bearing_wear'
+   - timestamp: recent (last few minutes)
+
+
+PART 3.4: Verification of Database Writes
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+☐ Step 3.4.1: Check sensor_readings table
+   Command:
+   ```sql
+   SELECT COUNT(*) FROM sensor_readings;
+   ```
+   Expected: 50-100 rows (depends on buffer frequency)
+
+☐ Step 3.4.2: Check predictions_log table
+   Command:
+   ```sql
+   SELECT COUNT(*) FROM predictions_log;
+   ```
+   Expected: 50-60 rows (1 per second × 60 seconds)
+
+☐ Step 3.4.3: Verify prediction quality
+   Command:
+   ```sql
+   SELECT 
+     prediction, 
+     alert_level, 
+     model_used, 
+     confidence, 
+     inference_time_ms 
+   FROM predictions_log 
+   ORDER BY timestamp DESC 
+   LIMIT 5;
+   ```
+   Expected: All predictions valid (0-1 range), latency < 50ms
+
+☐ Step 3.4.4: Verify ground truth data
+   Command:
+   ```sql
+   SELECT * FROM ground_truth;
+   ```
+   Expected: 1+ rows with actual_failure, days_to_failure, failure_type
+
+
+STATUS OF PHASE 3:
+✓ Database schema     [READY - SQL PROVIDED]
+✓ Fault injection     [READY - CODE PROVIDED]
+✓ Ground truth logic  [READY - CODE PROVIDED]
+⚠ Full test run       [NEEDS USER EXECUTION]
+
+
+================================================================================
+PHASE 4: VISUALIZATION & MONITORING (Week 4)  [ESTIMATED TIME: 5-7 hours]
+================================================================================
+
+PART 4.1: Simulink Dashboard Creation
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+☐ Step 4.1.1: Create new Simulink Model for Dashboard
+   File: maintenance_dashboard.slx
+   Purpose: Host dashboard visualization
+   Type: Dashboard model (no simulation dynamics)
+
+☐ Step 4.1.2: Add dashboard blocks
+   [SIMULINK DASHBOARD BLOCKS REQUIRED]
+   
+   Block 1: Circular Lamp (Alert Status)
+   ├─ Input: alert_level (0, 1, 2)
+   ├─ Colors: Green (0), Yellow (1), Red (2)
+   └─ Position: Top-left
+   
+   Block 2: Circular Gauge (Probability)
+   ├─ Input: pred_probability (0-1)
+   ├─ Range: 0 to 1
+   ├─ Label: "Failure Probability (%)"
+   └─ Position: Top-right
+   
+   Block 3: Numeric Display (Latency)
+   ├─ Input: latency_ms
+   ├─ Format: "Inference Time: %.1f ms"
+   └─ Position: Middle-left
+   
+   Block 4: Numeric Display (Confidence)
+   ├─ Input: confidence
+   ├─ Format: "Confidence: %.2f"
+   └─ Position: Middle-right
+   
+   Block 5: Time Scope (Prediction History)
+   ├─ Input: pred_probability
+   ├─ Duration: 60 seconds history
+   ├─ Y-limits: 0 to 1
+   └─ Position: Bottom (full width)
+
+☐ Step 4.1.3: Connect simulation model outputs to dashboard
+   Create data flow:
+   main_simulation.slx outputs → Data Bus / External Input
+   dashboard.slx reads from bus
+   
+   OR: Use Signal logging + playback
+
+
+PART 4.2: Signal Logging & Data Export
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+☐ Step 4.2.1: Add "To File" block to save results
+   [SIMULINK STANDARD BLOCK]
+   
+   Block type: Sinks → To File
+   Input: Mux signals: [time, pred_prob, alert_level, latency, confidence]
+   Output file: simulation_phase4_results.mat
+   File format: MAT-file
+   
+   Location: Connect to mux after all outputs gathered
+
+☐ Step 4.2.2: Configure logging parameters
+   Save format: Array [time, signal1, signal2, ...]
+   Decimation: 1 (save every sample)
+   Fixed point: No
+
+☐ Step 4.2.3: Run full simulation (60 seconds)
+   Expected output: simulation_phase4_results.mat (~500 KB)
+
+
+PART 4.3: Post-Simulation Analysis Script
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+☐ Step 4.3.1: Create analysis script
+   File: post_simulation_analysis.m
+   
+   Script provided: (see MATLAB_docs/post_simulation_analysis.m)
+   
+   Functionality:
+   - Load simulation results
+   - Extract key metrics (peaks, latency, alerts)
+   - Plot prediction timeline
+   - Compare to fault injection time
+   - Calculate time-to-detection (TTD)
+   - Generate report
+
+☐ Step 4.3.2: Run analysis script
+   Command:
+   ```matlab
+   >> post_simulation_analysis()
+   ```
+   
+   Expected output:
+   - Figure 1: Prediction timeline with fault markers
+   - Figure 2: Latency histogram
+   - Table: Key metrics
+   - Report file: simulation_analysis_report.txt
+
+☐ Step 4.3.3: Validate metrics
+   Precision (false alarms): < 10% (measure: how many times > 0.8 when no fault)
+   Recall (missed faults): < 5% (measure: did we detect fault when it occurred?)
+   Average latency: 15-30 ms
+   Time-to-detection: < 5 seconds after fault injection
+
+
+PART 4.4: Final Validation & Acceptance
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+☐ Step 4.4.1: All connectivity tests pass
+   ✓ Backend running
+   ✓ MATLAB client connected
+   ✓ WebSocket messages flowing
+   ✓ Database receiving data
+
+☐ Step 4.4.2: All inference tests pass
+   ✓ Predictions valid (0-1)
+   ✓ Alerts computed correctly
+   ✓ Latency < 50ms average
+
+☐ Step 4.4.3: All integration tests pass
+   ✓ Simulink model runs without errors
+   ✓ MATLAB Function Blocks execute
+   ✓ Data flows end-to-end
+   ✓ Predictions visible on dashboard
+
+☐ Step 4.4.4: End-to-end test successful
+   ✓ Startup: 1 minute (models load)
+   ✓ Continuous operation: 60+ seconds
+   ✓ Fault injection: System detects after 3-5 seconds
+   ✓ Alert: Red lamp illuminates, prediction ≥ 0.8
+   ✓ Ground truth: Message sent and logged
+   ✓ Database: All data persisted
+   ✓ Shutdown: Clean disconnect
+
+☐ Step 4.4.5: Performance summary
+   System latency: ___ ms (typical 15-30ms)
+   Predictions per minute: ___ (expected 60)
+   Database writes per minute: ___ (expected 60)
+   Memory usage (MATLAB): ___ MB (expected < 500 MB)
+   CPU usage: ___ % (expected < 30%)
+
+
+STATUS OF PHASE 4:
+✓ Dashboard blocks    [READY]
+✓ Analysis script     [READY]
+✓ Logging setup       [READY]
+⚠ Full deployment     [NEEDS USER EXECUTION]
+
+
+================================================================================
+                       NEXT STEPS & APPROVAL
+================================================================================
+
+After completing all 4 phases:
+
+1. Document results in: simulation_final_report.md
+2. Archive Simulink models in: models/simulink/
+3. Archive analysis results in: results/phase4/
+4. Update technical roadmap with actual vs. estimated times
+5. Prepare for production deployment
+
+Ready to proceed? Confirm:
+☐ All Phases 1-2 tests passed
+☐ Database setup verified (Phase 3)
+☐ Dashboard created and validated (Phase 4)
+☐ Analysis metrics meet acceptance criteria
+☐ Team approval for production deployment
+
+================================================================================
+Document created: February 12, 2026
+Version: 1.0
+Author: Digital Twin Predictive Maintenance Team
+================================================================================

@@ -1,0 +1,62 @@
+{
+    "title": "Required Paper Text Corrections for IEEE Submission",
+    "generated": "2026-05-27",
+    "corrections": [
+        {
+            "id": "PC-1",
+            "severity": "CRITICAL",
+            "location": "Abstract + Section III (Methodology)",
+            "incorrect_text": "bidirectional synchronisation between the physical motor and the digital twin",
+            "corrected_text": "The digital twin implements a semi-closed feedback loop: the physics-based Simulink simulation generates physics-consistent synthetic training data for the meta-learner (forward path), and the trained meta-learner's health-state predictions are fed back into the simulation environment for health-state-aware control simulation (feedback path). Full bidirectional parameter updating (i.e., using predictions to dynamically update the simulation's stiffness coefficients or thermal model parameters) is identified as a direction for future work.",
+            "reason": "The current implementation is one-directional at the physics layer: MATLAB sends sensor data -> FastAPI returns predictions. The DT's role is (1) synthetic training data generation via the latent degradation variable d, and (2) hosting the real-time simulation. Parameter adaptation from predictions back to the Simulink model is not implemented."
+        },
+        {
+            "id": "PC-2",
+            "severity": "CRITICAL",
+            "location": "Abstract + Conclusion",
+            "incorrect_text": "demonstrates industrial-grade reliability",
+            "corrected_text": "achieves F1-macro = 0.9089 +/- 0.0134 (95% CI: [0.8971, 0.9206]) on held-out benchmark data under offline simulation evaluation. Physical motor validation on live industrial hardware is a required step before deployment and is identified as future work.",
+            "reason": "Industrial-grade reliability requires validation on physical hardware under real operational conditions. All results are from benchmark datasets and a Latent Digital Twin simulation. IEEE reviewers will flag unsupported industrial claims. The corrected text accurately represents the experimental scope."
+        },
+        {
+            "id": "PC-3",
+            "severity": "CRITICAL",
+            "location": "Section IV (Uncertainty Quantification)",
+            "incorrect_text": "Monte Carlo Dropout (T=30 forward passes) provides uncertainty estimates",
+            "corrected_text": "Uncertainty is quantified using Shannon entropy H(p) = -sum(p_i * log(p_i)) applied to the 3-class softmax output of the meta-fusion model. A single deterministic forward pass (n_iter=1) is used; Monte Carlo Dropout was evaluated but rejected because it degraded calibration (ECE=0.21-0.24) compared to the deterministic entropy approach (ECE=0.0567). When H(p) exceeds the empirically determined threshold theta=0.30 nats (F1_certain=0.9773 at coverage=67.0%), the system outputs 'Indeterminate' and triggers: (1) an alert to the maintenance engineer via the WebSocket dashboard, (2) an increased sensor sampling rate, and (3) a flag for mandatory human review within 30 minutes.",
+            "reason": "n_iter=1 in websocket_handler.py: get_mc_prediction performs a single deterministic forward pass. MC Dropout ECE analysis showed ECE=0.21-0.24, substantially worse than deterministic ECE=0.0567. The corrected text accurately documents the implemented method and the theta=0.30 protocol."
+        },
+        {
+            "id": "PC-4",
+            "severity": "CRITICAL",
+            "location": "Table V (RUL Results)",
+            "incorrect_text": "MAE=23.01%, RMSE=26.81% (units shown as '%')",
+            "corrected_text": "System-level RUL: MAE=23.01 h, RMSE=26.81 h, NRMSE=0.2697 (= RMSE / max_RUL, max_RUL=99.4 h). Per-model NASA Bi-LSTM-Attn: MAE=1.354 h, RMSE=1.734 h, R^2=0.9964. Note: System-level MAE is higher because the meta-fusion classifies into 3 health states; RUL is estimated from the NASA expert output, which may diverge from true RUL when the latent degradation variable d does not correspond to the NASA bearing's exact timeline.",
+            "reason": "Values are in hours, not percentages. The '%' suffix was a transcription error."
+        },
+        {
+            "id": "PC-5",
+            "severity": "CRITICAL",
+            "location": "Table III (Per-class classification results)",
+            "incorrect_text": "Critical: Precision=1.00, Recall=1.00, F1=1.00",
+            "corrected_text": "Critical (n=75): Precision=0.893, Recall=0.893, F1=0.893",
+            "reason": "The 1.00 values were from the training-set 10-fold cross-validation evaluation (45 samples/class, near-perfectly separated after training). The held-out test set (n=300 samples: 107 Normal, 118 Warning, 75 Critical) shows P=R=F1=0.893 for Critical class, which is the correct value to report as the main result."
+        },
+        {
+            "id": "PC-6",
+            "severity": "MAJOR",
+            "location": "Section III (Methodology) \u2014 new subsection required",
+            "incorrect_text": "[missing subsection on DT contribution]",
+            "corrected_text": "III-E. Digital Twin Contribution Analysis\nThe Latent Digital Twin's contribution to the meta-fusion framework was evaluated via an ablation study comparing two training data paradigms: (a) DT-grounded training using physics-consistent synthetic samples generated via the latent degradation variable d, and (b) random-balanced sampling drawing uniformly from the five individual benchmark datasets without physics alignment.\n\nResults: DT-grounded F1=0.9003 [0.8616, 0.9342] vs random-balanced F1=0.9083 [0.8726, 0.9398]. The overlapping confidence intervals indicate no statistically significant accuracy difference (delta_F1=-0.0080, p>0.05). The DT's measurable contribution therefore lies not in classification accuracy, but in three structural properties: (1) systematic physics-consistent co-location of multi-modal data along the degradation continuum, which would otherwise require simultaneous physical faults across all five modalities; (2) controlled class balance (500 samples/class) eliminating the imbalance artefacts present in individual benchmark datasets; and (3) scalable data augmentation parameterised by d, enabling Monte Carlo exploration of the full degradation trajectory without additional physical experiments.",
+            "reason": "Reviewer C5 asked 'what does the DT layer contribute?' without the accuracy justification. The honest answer \u2014 structural data generation, not accuracy \u2014 is stronger and more defensible than overclaiming. This text directly addresses the reviewer's concern."
+        },
+        {
+            "id": "PC-7",
+            "severity": "MAJOR",
+            "location": "Section V (Conclusion) \u2014 new subsection",
+            "incorrect_text": "[missing limitations section]",
+            "corrected_text": "V-B. Limitations and Future Work\nSeveral limitations of the current study should be noted:\n1. Synthetic training data: The meta-fusion learner is trained on data from a Latent Digital Twin simulation, not from a physical motor simultaneously exhibiting all five fault modalities. While the physics-grounded synthesis approach reduces domain gap, residual distribution shift between synthetic and real multi-modal data remains unquantified.\n2. CPU-only deployment: All latency benchmarks (full pipeline P50 ~= 1050 ms) are for CPU-only inference. This latency is suitable for periodic (non-real-time-control) health monitoring but is insufficient for PLC-cycle-level control (typically 10-100 ms). GPU inference and model compression (quantisation, pruning) are identified as future work.\n3. No physical motor validation: All classification results are derived from benchmark datasets and DT simulation. Validation on a physical SCIM test rig under controlled fault insertion is required before industrial deployment.\n4. IMS dataset scope: The NASA Bi-LSTM-Attn RUL model is trained on bearing run-to-failure data from the IMS dataset (max_RUL=99.4 h). Generalisation to motors with different bearing geometries or longer operational lifetimes requires domain adaptation.\n5. Single-site evaluation: Results are validated on a single digital twin simulation environment and associated benchmark datasets. Cross-site generalisation remains as future work.",
+            "reason": "IEEE TII requires honest limitations discussion. Reviewers respect well-scoped contributions more than overreaching claims. A clear limitations section pre-empts reviewer objections and demonstrates research maturity."
+        }
+    ]
+}

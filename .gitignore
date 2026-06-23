@@ -1,0 +1,39 @@
+# Python environments
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Dependencies and Builds
+node_modules/
+dist/
+build/
+out/
+
+# Datasets
+datasets/
+
+# IDEs
+.vscode/
+.idea/
+
+# Data and Models
+data/*.npz
+data/*.csv
+Trained_models/
+models/
+results/
+
+# Logs and DB
+*.log
+logs/
+users.db
+maintenance_log.mat
+
+# OS generated files
+.DS_Store
+Thumbs.db
+

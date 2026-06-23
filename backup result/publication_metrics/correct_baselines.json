@@ -1,0 +1,232 @@
+{
+    "methodology": "All baselines evaluated on the 300-sample latent DT test set. CWRU uni-modal uses ensure_3_classes mapping (same as meta-learner input). Late fusion = argmax of mean of 5 expert probability vectors. Early fusion = MLP on 100-point raw window concatenation. Bootstrap CI: n=1000, seed=42.",
+    "timestamp": "2026-05-27T22:15:25.957913",
+    "note_on_previous_baseline": "The previously reported uni-modal F1=0.1753 was computed by truncating CWRU's 4-class output to 3 classes by position (discarding Outer Race), causing severe class-label mismatch. The early-fusion F1=0.1882 was hard-coded, not measured. Both are corrected in this script.",
+    "results": {
+        "majority_class": {
+            "f1_macro": 0.18819776714513556,
+            "accuracy": 0.3933333333333333,
+            "f1_bootstrap_mean": 0.18827986897310575,
+            "f1_ci_95_lo": 0.16791354945968415,
+            "f1_ci_95_hi": 0.20689655172413793,
+            "confusion_matrix": [
+                [
+                    0,
+                    107,
+                    0
+                ],
+                [
+                    0,
+                    118,
+                    0
+                ],
+                [
+                    0,
+                    75,
+                    0
+                ]
+            ],
+            "per_class": {
+                "Normal (n=107)": {
+                    "precision": 0.0,
+                    "recall": 0.0,
+                    "f1": 0.0,
+                    "support": 107
+                },
+                "Warning (n=118)": {
+                    "precision": 0.3933,
+                    "recall": 1.0,
+                    "f1": 0.5646,
+                    "support": 118
+                },
+                "Critical (n=75)": {
+                    "precision": 0.0,
+                    "recall": 0.0,
+                    "f1": 0.0,
+                    "support": 75
+                }
+            },
+            "description": "Always predict the most frequent training class (1). Theoretical floor: binomial accuracy = max class frequency."
+        },
+        "unimodal_cwru": {
+            "f1_macro": 0.17526617526617527,
+            "accuracy": 0.3566666666666667,
+            "f1_bootstrap_mean": 0.1750275373694274,
+            "f1_ci_95_lo": 0.15515771526001707,
+            "f1_ci_95_hi": 0.19496855345911948,
+            "confusion_matrix": [
+                [
+                    107,
+                    0,
+                    0
+                ],
+                [
+                    118,
+                    0,
+                    0
+                ],
+                [
+                    75,
+                    0,
+                    0
+                ]
+            ],
+            "per_class": {
+                "Normal (n=107)": {
+                    "precision": 0.3567,
+                    "recall": 1.0,
+                    "f1": 0.5258,
+                    "support": 107
+                },
+                "Warning (n=118)": {
+                    "precision": 0.0,
+                    "recall": 0.0,
+                    "f1": 0.0,
+                    "support": 118
+                },
+                "Critical (n=75)": {
+                    "precision": 0.0,
+                    "recall": 0.0,
+                    "f1": 0.0,
+                    "support": 75
+                }
+            },
+            "description": "CWRU expert probability vector (ensure_3_classes mapping: Normal->0, InnerRace->1, Ball->2), argmax. Same mapping used by the meta-learner. Corrects the previous baseline which used a broken 4->3 truncation."
+        },
+        "late_fusion": {
+            "f1_macro": 0.7454907789614307,
+            "accuracy": 0.7566666666666667,
+            "f1_bootstrap_mean": 0.7445003330391767,
+            "f1_ci_95_lo": 0.6925942491986935,
+            "f1_ci_95_hi": 0.7888619836347025,
+            "confusion_matrix": [
+                [
+                    91,
+                    15,
+                    1
+                ],
+                [
+                    7,
+                    93,
+                    18
+                ],
+                [
+                    0,
+                    32,
+                    43
+                ]
+            ],
+            "per_class": {
+                "Normal (n=107)": {
+                    "precision": 0.9286,
+                    "recall": 0.8505,
+                    "f1": 0.8878,
+                    "support": 107
+                },
+                "Warning (n=118)": {
+                    "precision": 0.6643,
+                    "recall": 0.7881,
+                    "f1": 0.7209,
+                    "support": 118
+                },
+                "Critical (n=75)": {
+                    "precision": 0.6935,
+                    "recall": 0.5733,
+                    "f1": 0.6277,
+                    "support": 75
+                }
+            },
+            "description": "Argmax of mean probability across all 5 expert probability vectors. No meta-learner training required."
+        },
+        "early_fusion": {
+            "f1_macro": 0.8202196848561677,
+            "accuracy": 0.8266666666666667,
+            "f1_bootstrap_mean": 0.8195215558990651,
+            "f1_ci_95_lo": 0.775349011459461,
+            "f1_ci_95_hi": 0.8624258932053195,
+            "confusion_matrix": [
+                [
+                    98,
+                    6,
+                    3
+                ],
+                [
+                    6,
+                    93,
+                    19
+                ],
+                [
+                    0,
+                    18,
+                    57
+                ]
+            ],
+            "per_class": {
+                "Normal (n=107)": {
+                    "precision": 0.9423,
+                    "recall": 0.9159,
+                    "f1": 0.9289,
+                    "support": 107
+                },
+                "Warning (n=118)": {
+                    "precision": 0.7949,
+                    "recall": 0.7881,
+                    "f1": 0.7915,
+                    "support": 118
+                },
+                "Critical (n=75)": {
+                    "precision": 0.7215,
+                    "recall": 0.76,
+                    "f1": 0.7403,
+                    "support": 75
+                }
+            },
+            "description": "MLP trained on first 100 raw time-domain points from each modality, concatenated (total 400 features). Trained on 1500-sample DT training set, evaluated on 300-sample DT test set. This replaces the hard-coded 0.1882 value."
+        },
+        "rule_based": {
+            "f1_macro": 0.3669966336699663,
+            "accuracy": 0.44,
+            "f1_bootstrap_mean": 0.3663499336782987,
+            "f1_ci_95_lo": 0.32782156686142744,
+            "f1_ci_95_hi": 0.40741683300953196,
+            "confusion_matrix": [
+                [
+                    0,
+                    99,
+                    8
+                ],
+                [
+                    0,
+                    57,
+                    61
+                ],
+                [
+                    0,
+                    0,
+                    75
+                ]
+            ],
+            "per_class": {
+                "Normal (n=107)": {
+                    "precision": 0.0,
+                    "recall": 0.0,
+                    "f1": 0.0,
+                    "support": 107
+                },
+                "Warning (n=118)": {
+                    "precision": 0.3654,
+                    "recall": 0.4831,
+                    "f1": 0.4161,
+                    "support": 118
+                },
+                "Critical (n=75)": {
+                    "precision": 0.5208,
+                    "recall": 1.0,
+                    "f1": 0.6849,
+                    "support": 75
+                }
+            },
+            "description": "Max-severity-wins rule: compute weighted severity score per expert [Normal=0, Warning=0.5, Critical=1.0], take worst across all experts, threshold at 0.30 / 0.70."
+        }
+    }
+}

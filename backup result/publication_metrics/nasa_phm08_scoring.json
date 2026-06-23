@@ -1,0 +1,45 @@
+{
+    "methodology": "Evaluated on 300-sample latent DT test set. RUL in HOURS (IMS bearing, design: RUL = 100*(1-d)). PHM08 asymmetric score adapted from Saxena & Goebel (2008). Note: this is not the turbofan C-MAPSS dataset -- direct comparison to published C-MAPSS benchmarks requires dataset parity.",
+    "timestamp": "2026-05-27T22:21:14.735464",
+    "metrics": {
+        "mae_hours": 23.0115,
+        "rmse_hours": 26.8096,
+        "nrmse": 0.2697,
+        "r2": 0.1296,
+        "max_rul_hours": 99.41
+    },
+    "phm08_score": {
+        "total_score": 6546.55,
+        "n_late": 174,
+        "n_early": 126,
+        "early_penalty_scale": 13.0,
+        "late_penalty_scale": 10.0,
+        "interpretation": "Lower is better. Late predictions penalised ~1.3x more."
+    },
+    "paper_guidance": {
+        "unit_correction": "Report MAE/RMSE in hours, NOT in percent.",
+        "nrmse_if_reported": "NRMSE = 0.2697 = RMSE(26.810h) / max_RUL(99.4h)",
+        "dataset_clarification": "This project uses the NASA IMS bearing dataset (run-to-failure vibration, 4 bearings, ~1 week duration), NOT the turbofan C-MAPSS dataset. Direct numerical comparison to C-MAPSS published results (Zheng 2017, Li 2018) would require matching datasets. Acknowledge this limitation in the paper or replace with IMS-specific literature comparisons.",
+        "comparison_to_add": "Add IMS-specific baselines: Lei et al. 2016 (PRONOSTIA), Qian et al. 2018 (bearing LSTM), or compare against the per-model Bi-LSTM result (MAE=1.354h, RMSE=1.734h) as the single-model baseline."
+    },
+    "published_cmapss_benchmarks_context": [
+        {
+            "method": "Zheng et al. 2017, LSTM (FD001)",
+            "mae": 12.6,
+            "rmse": 18.6,
+            "unit": "cycles"
+        },
+        {
+            "method": "Li et al. 2018, CNN (FD001)",
+            "mae": 6.8,
+            "rmse": 12.65,
+            "unit": "cycles"
+        },
+        {
+            "method": "Attention BiLSTM survey avg (FD001)",
+            "mae": 7.47,
+            "rmse": 12.1,
+            "unit": "cycles"
+        }
+    ]
+}

@@ -1,0 +1,181 @@
+PHASE 1 EXECUTION STEPS (UPDATED)
+==================================
+
+IMPORTANT: This guide is tested for MATLAB 2025b
+
+Step 1: Run the Model Creation Script
+-----
+
+Open MATLAB 2025b and navigate to the project folder:
+cd('D:\Silas Document\UMaT\Year 4\Project work\Matlab_Project codes')
+
+Then run:
+create_synthetic_sensor_model
+
+Wait for the script to finish (~10 seconds).
+You should see:
+  ✓ Model created: synthetic_sensor_test
+  ✓ Blocks added and wired
+  ✓ sim_logs folder created
+  ✓ Model opens automatically
+
+
+Step 2: Edit predict_maintenance MATLAB Function Block
+--------
+
+IMPORTANT: The MATLAB Function block in Simulink needs manual code entry.
+
+1. In the Simulink model, double-click the "predict_maintenance" block (center-right area)
+2. A code editor window opens—you'll see placeholder code
+3. Select ALL the code and DELETE it
+4. Open this file: matlab_client/Matlab_docs/predict_maintenance_fcn.txt
+5. Copy ALL the code from that file
+6. Paste it into the MATLAB Function block editor
+7. Click "OK" to save
+
+Expected code in block:
+  - function y = predict_maintenance(sensor_vector)
+  - persistent client initialized
+  - client = PredictiveMaintenanceClient()
+  - client.connect()
+  - resp = client.predict(sensor_vector, sensor_names)
+  - Return y (0–1 probability)
+
+
+Step 3: Verify Model Wiring in Simulink
+--------
+
+Once the model is open and the predict_maintenance block is edited:
+- You should see a block diagram with:
+  - 8 signal sources on the left (3× Sine, 1× Ramp, 4× Constants)
+  - Mux combining all 8 signals
+  - Rate Transition downsampling to 1 Hz
+  - predict_maintenance MATLAB Function block (with code now)
+  - Display block showing predictions
+  - To File and To Workspace blocks for logging
+
+
+Step 4: Run the Simulation
+----------
+
+In the Simulink editor:
+- Click "Run" button (green triangle icon) or press Ctrl+T
+- Simulation duration: 60 seconds
+- Real-time: ~15–20 seconds
+
+While running:
+- Watch the Display block (shows prediction values 0–1)
+- At each second (1 Hz), new prediction arrives from server
+- You should see values changing as sensor signals evolve
+
+Expected prediction pattern:
+- t=0–10s: ~0.0–0.2 (healthy, low vibration)
+- t=10–40s: ~0.1–0.4 (normal range, Ramp degradation starts)
+- t=40–60s: ~0.3–0.6 (degradation rising, higher probability)
+
+
+Step 5: Check Results
+-----------
+
+After simulation completes:
+
+1. MATLAB Workspace:
+   predictions_log — array of prediction values (60 values, one per second)
+   
+   Plot them:
+   plot(predictions_log)
+   xlabel('Time (seconds)')
+   ylabel('Failure Probability (0–1)')
+   title('Prediction Over Time')
+   grid on
+
+2. Saved Data File:
+   sim_logs/synthetic_sensor_log.mat — contains sensor vectors + timestamps
+   
+   Load and inspect:
+   load('sim_logs/synthetic_sensor_log.mat')
+   % sensor_data.signals.values — [T x 8] matrix of sensor vectors
+   % sensor_data.time — time vector (60 values)
+
+3. Error Checks:
+   If Display shows NaN or Error, check logs in MATLAB Command Window
+
+
+Step 6: Troubleshooting
+-----------
+
+Issue: "PredictiveMaintenanceClient not found" in predict_maintenance block
+Solution:
+  - Ensure backend API is running (port 8002)
+  - Verify PredictiveMaintenanceClient.m is in matlab_client/ folder
+  - Add matlab_client to MATLAB path:
+    addpath(fullfile(pwd, 'matlab_client'))
+
+Issue: predict_maintenance block shows "Code generation error"
+Solution:
+  - Make sure you pasted the complete function code (check for missing lines)
+  - Verify no syntax errors (red underlines in block editor)
+  - Re-copy code from predict_maintenance_fcn.txt and paste again
+
+Issue: Prediction always returns 0 (healthy)
+Solution:
+  - Check server is running: open browser to http://localhost:8002/health
+  - Check logs in MATLAB Command Window for error messages
+  - Verify PredictiveMaintenanceClient.connect() succeeds ([INFO] message)
+
+Issue: Simulation runs but Display is blank
+Solution:
+  - The prediction might be running but output buffer is empty for first sample
+  - Wait 2–3 seconds into simulation for first prediction
+  - Check MATLAB Command Window for [INFO] messages
+
+
+Step 7: Success Criteria (Phase 1 Complete)
+-----------
+
+✓ Model created and opens in Simulink
+✓ predict_maintenance block has correct function code
+✓ Simulation runs for 60 seconds without errors
+✓ Display block shows prediction values (0–1) updating ~every second
+✓ predictions_log has ~60 values (one per second)
+✓ sensor_log.mat saved to sim_logs folder
+✓ No error messages in Command Window
+✓ Can plot predictions_log and see degradation trend
+
+
+================================================================================
+MATLAB 2025b Specific Notes
+================================================================================
+
+Solver Compatibility:
+  - Script uses FixedStepDiscrete (discrete fixed-step solver)
+  - This is compatible with MATLAB Function blocks
+  - If you see warnings about "MultiTasking" or sample times, ignore them
+
+Block Library Paths (2025b verified):
+  - simulink/Sources/* (Clock, Sine Wave, Ramp, Constant)
+  - simulink/Signal Routing/Mux
+  - simulink/Signal Attributes/Rate Transition
+  - simulink/User-Defined Functions/MATLAB Function
+  - simulink/Sinks/* (Display, To File, To Workspace)
+
+MATLAB Function Block (2025b):
+  - Double-click to open the editor
+  - Paste code directly into the editor (no special wrapping needed)
+  - Click "OK" to confirm and compile
+  - If "Code generation error" appears, check for syntax issues
+  - For MATLAB 2025b, persistent variables and try-catch are fully supported
+
+Known Issues with 2025b:
+  - First prediction might take 1-2 seconds (cold start)
+  - Display block update might lag on first sample
+  - These are normal behaviors, not errors
+
+If Script Fails:
+  - Check that all block libraries are loaded: run `sl_refresh_customizations`
+  - Try running: `rehash toolboxcache` before running the script
+  - Verify paths in `pwd` are correct: run `pwd` in MATLAB command window
+
+
+Next: Once verified, we proceed to Phase 2 (add Buffer + database ground truth)
+

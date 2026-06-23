@@ -1,0 +1,34 @@
+{
+  "CIA1": {
+    "model_path": "Trained_models/cia1_dl/best_mlp_model.keras",
+    "model_type": "keras",
+    "description": "MLP model for CIA-1 failure mode prediction"
+  },
+  "NASA": {
+    "model_path": "Trained_models/nasa_dl_comparison/Bi-LSTM-Attn/Bi-LSTM-Attn_model.keras",
+    "scaler_path": "Trained_models/nasa_dl_comparison/Bi-LSTM-Attn/Bi-LSTM-Attn_scaler.pkl",
+    "model_type": "keras",
+    "description": "Bi-LSTM-Attn for NASA bearing RUL prediction"
+  },
+  "CWRU": {
+    "model_path": "Trained_models/cwru_cnn/cnn_classifier.keras",
+    "model_type": "keras",
+    "description": "CNN for CWRU bearing fault classification"
+  },
+  "Induction_Motor": {
+    "model_path": "Trained_models/induction_dl/best_cnn_model.keras",
+    "model_type": "keras",
+    "description": "CNN for induction motor fault detection"
+  },
+  "Current_Signature": {
+    "model_path": "Trained_models/current_signature_dl/cnn_model.keras",
+    "scaler_path": "Trained_models/current_signature_dl/scaler.pkl",
+    "model_type": "keras",
+    "description": "CNN for current signature fault analysis"
+  },
+  "Thermal": {
+    "model_path": "models/thermal/model.keras",
+    "model_type": "keras",
+    "description": "MobileNetV2 for thermal image fault classification"
+  }
+}

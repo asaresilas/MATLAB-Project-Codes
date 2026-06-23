@@ -1,0 +1,30 @@
+{
+    "system_level": {
+        "mae_hours": 23.011469042475976,
+        "rmse_hours": 26.809574313104825,
+        "nrmse": 0.2696750405040079,
+        "max_rul_hours": 99.41437021015811,
+        "unit_is_hours": true,
+        "unit_was_incorrectly_labelled_percent_in_paper": true
+    },
+    "per_model_bilstm": {
+        "mae_hours": 1.354530538693036,
+        "rmse_hours": 1.7343871291149808,
+        "r2": 0.9963593007489099,
+        "nrmse": 0.017446040501474323
+    },
+    "rul_scale": {
+        "max_hours": 99.41437021015811,
+        "min_hours": 0.7431095716081804,
+        "mean_hours": 49.48126410636237,
+        "design_formula": "RUL = 100 * (1 - d), d in [0, 1]"
+    },
+    "consistency_checks": {
+        "system_rmse_ge_mae": true,
+        "system_mae_positive": true,
+        "system_rmse_lt_max_rul": true,
+        "model_rmse_ge_mae": true,
+        "model_r2_positive": true
+    },
+    "all_checks_pass": true
+}

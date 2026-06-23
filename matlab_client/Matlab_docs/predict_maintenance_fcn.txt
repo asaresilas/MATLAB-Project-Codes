@@ -1,0 +1,81 @@
+function y = predict_maintenance(sensor_vector)
+% Calls PredictiveMaintenanceClient to get failure prediction
+% Input: sensor_vector (1 x 8 double)
+% Output: y (double, failure probability 0-1)
+% 
+% Note: Simplified for Simulink MATLAB Function block compatibility
+% (no try/catch, code generation friendly)
+
+persistent client initialized
+
+% Initialize client on first call
+if isempty(initialized)
+    initialized = 0;
+    client = [];
+end
+
+if initialized == 0
+    % Create client instance
+    client = PredictiveMaintenanceClient();
+    
+    % Try to connect - if fails, return 0
+    try_connect_success = 0;
+    cstatus = 1;
+    
+    % Attempt connection
+    if not(isempty(client))
+        try
+            client.connect();
+            try_connect_success = 1;
+            initialized = 1;
+        catch
+            initialized = -1;
+        end
+    end
+end
+
+% If initialization failed, return healthy
+if initialized < 0
+    y = 0;
+    return;
+end
+
+% If not initialized yet, return 0
+if initialized == 0
+    y = 0;
+    return;
+end
+
+% Call prediction
+sensor_names = {'Vib_X', 'Vib_Y', 'Vib_Z', 'Speed', 'I_A', 'Temp_2', 'Temp_1_Deg', 'Extra'};
+
+y = 0;
+resp = [];
+
+if not(isempty(client))
+    resp = client.predict(sensor_vector, sensor_names);
+end
+
+% Parse response
+if not(isempty(resp))
+    if isstruct(resp)
+        if isfield(resp, 'prediction')
+            y = resp.prediction;
+        else
+            y = 0;
+        end
+    else
+        y = double(resp);
+    end
+end
+
+% Clamp to valid range 0-1
+if y < 0
+    y = 0;
+end
+if y > 1
+    y = 1;
+end
+
+end
+

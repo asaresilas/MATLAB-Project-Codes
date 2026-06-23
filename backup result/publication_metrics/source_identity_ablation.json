@@ -1,0 +1,60 @@
+{
+    "methodology": "Tests whether the meta-learner exploits source identity rather than sensor fusion. Test 1: trains on 5-dim 'which expert dominates' feature only. Test 2: permutes entropy and margin values across samples, retrains. Test 3: shuffles labels (sanity check, expect ~33%). Test 4: uses only 15 base probability dims, no entropy/margin/global stats. Bootstrap CI: n=1000, seed=42.",
+    "timestamp": "2026-05-27T22:21:33.903179",
+    "results": {
+        "full_32dim_reference": {
+            "name": "Full 32-dim meta-features (reference)",
+            "f1_macro": 0.8800329126601238,
+            "accuracy": 0.88,
+            "f1_ci_lo": 0.8426106353077857,
+            "f1_ci_hi": 0.9145211935953521
+        },
+        "source_indicator_only_logistic": {
+            "name": "Source indicator only (which expert dominates)",
+            "f1_macro": 0.746857494541335,
+            "accuracy": 0.7566666666666667,
+            "f1_ci_lo": 0.6986971746500691,
+            "f1_ci_hi": 0.7945400870598436
+        },
+        "source_indicator_only_stacking": {
+            "name": "Source indicator only (stacking)",
+            "f1_macro": 0.8622774205298477,
+            "accuracy": 0.8633333333333333,
+            "f1_ci_lo": 0.8230264817250665,
+            "f1_ci_hi": 0.8998386581869511
+        },
+        "source_id_interpretation": "If source-indicator F1 (0.7469) ~= full model F1 (0.8800), source identity explains the result. Gap = +0.1332.",
+        "permuted_entropy_margin": {
+            "name": "Permuted entropy+margin (reviewer's ablation)",
+            "f1_macro": 0.8938398764606196,
+            "accuracy": 0.8933333333333333,
+            "f1_ci_lo": 0.8569687063593344,
+            "f1_ci_hi": 0.9287446060172128
+        },
+        "entropy_margin_interpretation": "If permuted-entropy model F1 (0.8938) ~= full model F1 (0.8800), entropy/margin add no signal beyond base probs. Gap = -0.0138.",
+        "shuffled_labels_control": {
+            "name": "Shuffled labels control (expect ~33% F1)",
+            "f1_macro": 0.3307520295205796,
+            "accuracy": 0.43,
+            "f1_ci_lo": 0.2876965815946932,
+            "f1_ci_hi": 0.37408029493630995
+        },
+        "base_probs_only_15dim": {
+            "name": "Base probabilities only (15-dim, no entropy/margin)",
+            "f1_macro": 0.8986162635227601,
+            "accuracy": 0.8966666666666666,
+            "f1_ci_lo": 0.8622230334385573,
+            "f1_ci_hi": 0.9289325484465003
+        },
+        "entropy_margin_contribution": "Adding entropy/margin/global stats (15->32 dims) changes F1 by -0.0186.",
+        "verdicts": {
+            "source_id_hypothesis": "REFUTED: source ID alone is insufficient; meta-features carry additional signal.",
+            "entropy_margin_hypothesis": "CONFIRMED: entropy/margin add no signal beyond base probs.",
+            "f1_gaps": {
+                "full_vs_source_indicator": 0.1332,
+                "full_vs_permuted_ent_marg": -0.0138,
+                "full_vs_base_probs_only": -0.0186
+            }
+        }
+    }
+}

@@ -1,0 +1,14 @@
+{
+    "cohen_kappa": 0.8371,
+    "observed_agreement_po": 0.8933,
+    "expected_agreement_pe": 0.3454,
+    "kappa_se": 0.0272,
+    "kappa_95ci": [
+        0.7837,
+        0.8904
+    ],
+    "interpretation": "Almost Perfect",
+    "reference": "Landis & Koch (1977) kappa scale: <0.20 Slight, 0.21-0.40 Fair, 0.41-0.60 Moderate, 0.61-0.80 Substantial, >0.80 Almost Perfect",
+    "n_test_samples": 300,
+    "note": "Cohen's kappa = 0.8371 (Almost Perfect agreement) on n=300 held-out test samples. 95% CI [0.7837, 0.8904]. Kappa accounts for chance agreement unlike raw accuracy."
+}
