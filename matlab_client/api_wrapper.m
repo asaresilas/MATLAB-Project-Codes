@@ -31,7 +31,18 @@ t_out = 0;   % No thermal fault
 try
     % --- Initialise persistent client on first call ---
     if isempty(client)
-        client = PredictiveMaintenanceClient('ws://127.0.0.1:8000', 'MOTOR-3D-TWIN');
+        % SERVER_URL priority:
+        %   1. MOTORGUARD_SERVER env var (set in MATLAB Command Window)
+        %   2. HF Spaces cloud URL (production default)
+        %   3. localhost (automatic fallback when env var is empty string)
+        %
+        % Switch to local:  setenv('MOTORGUARD_SERVER','http://127.0.0.1:8000')
+        % Switch to cloud:  setenv('MOTORGUARD_SERVER','')
+        SERVER_URL = getenv('MOTORGUARD_SERVER');
+        if isempty(SERVER_URL)
+            SERVER_URL = 'https://YOUR-HF-USERNAME-motorguard.hf.space';
+        end
+        client = PredictiveMaintenanceClient(SERVER_URL, 'MOTOR-3D-TWIN');
         last_connect_attempt = -inf;
     end
 

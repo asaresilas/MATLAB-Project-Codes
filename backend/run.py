@@ -58,6 +58,15 @@ if _host == "0.0.0.0":
     )
 
 if __name__ == "__main__":
+    # ── Download models from HF Hub if Trained_models/ is empty ──────────────
+    # Runs automatically in HF Spaces Docker container on cold start.
+    # On local dev this is a no-op (Trained_models/ already populated).
+    try:
+        import download_models
+        download_models.download()
+    except Exception as _dm_err:
+        print(f"  [run.py] Model download skipped: {_dm_err}")
+
     # ── Early port check — fast-fail before TF even loads ─────────────────────
     if not _port_is_free(_host, _port):
         print(
