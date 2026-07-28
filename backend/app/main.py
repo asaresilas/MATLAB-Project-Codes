@@ -61,6 +61,7 @@ if not _jwt_key:
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import asyncio as _asyncio
     logger.info("=== MotorGuard API starting up ===")
     logger.info("CORS allowed origins: %s", ALLOWED_ORIGINS)
     # Initialise database — creates sensor_readings and other tables if not present
@@ -68,7 +69,13 @@ async def lifespan(app: FastAPI):
         init_db()
     except Exception as exc:
         logger.warning("Database init failed (non-fatal): %s", exc)
-    registry.load_models()
+
+    # Load models in a thread-pool executor so the async event loop stays free.
+    # This means /health responds immediately even while TF models are loading,
+    # which prevents MATLAB's HTTP health-check from timing out.
+    logger.info("Loading AI models in background thread (server accepts requests immediately)…")
+    await _asyncio.to_thread(registry.load_models)
+
     n = len(registry.models)
     if n == 0:
         logger.warning("⚠ No models loaded — all inference endpoints will return 503")
@@ -83,13 +90,11 @@ async def lifespan(app: FastAPI):
         from app.api.websocket_handler import prediction_engine
         logger.info("Warming up models (dummy inference to pre-compile TF graphs)…")
         try:
-            import asyncio as _asyncio
             warmup_payload = {
                 "vibration": _np.random.randn(2048).tolist(),
                 "current":   _np.random.randn(1000, 3).tolist(),
                 "scalars":   [1480.0, 97.3, 300.0, 293.0],  # Kelvin — same as MATLAB
             }
-            # Run async predict in a new event loop task
             await prediction_engine.predict(warmup_payload)
             logger.info("✓ Model warmup complete — all TF graphs compiled, ready for MATLAB")
         except Exception as _e:

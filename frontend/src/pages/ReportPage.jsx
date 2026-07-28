@@ -166,7 +166,6 @@ export function ReportPage({ controller }) {
   const [nextMaintType, setNextMaintType] = useState('Routine')
   const [nextMaintDate, setNextMaintDate] = useState('')
   const [supervisorName, setSupervisorName] = useState('')
-  const [nextInspDate,   setNextInspDate]   = useState('')
   const [designation,    setDesignation]    = useState(() => {
     // Pre-fill from session role, capitalised — inspector can override with actual job title
     const role = session?.role || ''
@@ -181,17 +180,22 @@ export function ReportPage({ controller }) {
   }
 
   /* ── Live data ── */
-  const healthState = machine?.healthState ?? 'UNKNOWN'
-  const healthCls   = { NORMAL: 'ok', WARNING: 'warn', CRITICAL: 'crit' }[healthState.toUpperCase()] ?? 'idle'
-  const cert        = parseFloat(machine?.predictionCertainty)
-  const certStr     = !isNaN(cert) ? `${cert.toFixed(0)}%` : '—'
-  const rulHours    = parseFloat(machine?.rulHours)
-  const rulCls      = isNaN(rulHours) ? 'idle' : rulHours < 50 ? 'crit' : rulHours < 150 ? 'warn' : 'ok'
-  const rulDays     = !isNaN(rulHours) ? `(≈ ${(rulHours / 8).toFixed(0)} working days)` : ''
-  const faultCount  = alarms?.active?.length ?? 0
-  const imb         = parseFloat(sensors?.phaseCurrent?.imbalance)
-  const imbCls      = isNaN(imb) ? 'idle' : imb > 12 ? 'crit' : imb > 8 ? 'warn' : 'ok'
+  const healthState   = machine?.healthState    ?? 'UNKNOWN'
+  const healthCls     = { NORMAL: 'ok', WARNING: 'warn', CRITICAL: 'crit' }[healthState.toUpperCase()] ?? 'idle'
+  const faultTypeName = machine?.faultTypeName  || 'Healthy'
+  const aiExplanation = machine?.explanation    || ''
+  const cert          = parseFloat(machine?.predictionCertainty)
+  const certStr       = !isNaN(cert) ? `${cert.toFixed(0)}%` : '—'
+  const rulHours      = parseFloat(machine?.rulHours)
+  const rulCls        = isNaN(rulHours) ? 'idle' : rulHours < 50 ? 'crit' : rulHours < 150 ? 'warn' : 'ok'
+  const rulDays       = !isNaN(rulHours) ? `(≈ ${(rulHours / 8).toFixed(0)} working days)` : ''
+  const faultCount    = alarms?.active?.length ?? 0
+  const imb           = parseFloat(sensors?.phaseCurrent?.imbalance)
+  const imbCls        = isNaN(imb) ? 'idle' : imb > 12 ? 'crit' : imb > 8 ? 'warn' : 'ok'
   const sOf = statusOf
+  /* Load Factor: computed from shaft torque ÷ rated torque (483.9 N·m = 75 kW at 1480 rpm) */
+  const torqueNum  = parseFloat(operatingPoint?.torque)
+  const loadFactor = !isNaN(torqueNum) ? (torqueNum / 483.9) * 100 : null
 
   /* ── Landing page (before generation) ── */
   if (!reportGenerated) {
@@ -371,7 +375,6 @@ export function ReportPage({ controller }) {
                 ['Efficiency Class', motor.effClass],
                 ['Insulation Class', motor.insulation],
                 ['Duty Cycle',       motor.dutyCycle],
-                ['Thermal Protect.', motor.thermalProt],
                 ['Enclosure (IP)',   motor.enclosure],
                 ['Mounting',         motor.mounting],
                 ['Installation Date',motor.installedDate],
@@ -425,14 +428,11 @@ export function ReportPage({ controller }) {
           <SectionHd n="4">Live Electrical Parameters — Running Condition</SectionHd>
 
           <SubHd>4.1 — Three-Phase Supply</SubHd>
-          <ParamTable>
-            <ParamRow label="Supply Voltage"    value={fmtN(sensors?.supplyParams?.voltage,    1)} unit="V"   limit="Rated: 400 V  |  360–440 V range" status={sOf(sensors?.supplyParams?.voltage, null, null)} />
-            <ParamRow label="Supply Frequency"  value={fmtN(sensors?.supplyParams?.frequency,  2)} unit="Hz"  limit="Rated: 50 Hz  |  49–51 Hz range"  status={sOf(sensors?.supplyParams?.frequency, null, null)} />
-            <ParamRow label="Power Factor"      value={fmtN(sensors?.supplyParams?.powerFactor,3)} unit=""    limit="Min: 0.85 (lagging)"               status="idle" />
-            <ParamRow label="Active Power"      value={fmtN(sensors?.supplyParams?.activePower,2)} unit="kW"  limit="Rated: 15 kW"                      status={sOf(sensors?.supplyParams?.activePower, 14, 17)} />
-            <ParamRow label="Apparent Power"    value={fmtN(sensors?.supplyParams?.apparentPower,2)} unit="kVA" limit=""                               status="idle" />
-            <ParamRow label="THD — Current"     value={fmtN(sensors?.supplyParams?.thdCurrent, 1)} unit="%"   limit="IEC 61000-3-2  |  Limit: &lt;5%"  status={sOf(sensors?.supplyParams?.thdCurrent, 3, 5)} />
-          </ParamTable>
+          <p className="rpt-section-note" style={{ color: '#92400e', background: '#fef3c7', padding: '8px 12px', borderRadius: 4 }}>
+            ⚠ Live supply voltage, frequency, power factor, and power measurements are not available — a dedicated voltage transducer
+            (e.g. LEM CV 3-1000) is required for these readings. Pre-start manual voltage measurements are recorded in Section 3.
+            Phase current analysis (Section 4.2) is active and available.
+          </p>
 
           <SubHd style={{ marginTop: 16 }}>4.2 — Stator Phase Currents (IEC 60034-1)</SubHd>
           <table className="rpt-table rpt-table-full">
@@ -451,9 +451,9 @@ export function ReportPage({ controller }) {
                   <tr key={ph}>
                     <td className="rpt-td-label"><strong>{ph}</strong></td>
                     <td className="rpt-td-val"><strong>{!isNaN(n) ? n.toFixed(2) : '—'}</strong></td>
-                    <td className="rpt-td-limit">30 A</td>
+                    <td className="rpt-td-limit">129 A (line)</td>
                     <td className="rpt-td-val">{dev}</td>
-                    <td className="rpt-td-status"><StatusBadge cls={sOf(val, 28, 35)} /></td>
+                    <td className="rpt-td-status"><StatusBadge cls={sOf(val, 129, 148)} /></td>
                   </tr>
                 )
               })}
@@ -465,7 +465,7 @@ export function ReportPage({ controller }) {
               </tr>
             </tbody>
           </table>
-          <p className="rpt-table-note">NEMA MG-1 / IEC 60034-26: Sustained phase imbalance &gt;1% causes additional rotor heating. Values &gt;5% risk premature failure.</p>
+          <p className="rpt-table-note">Sensor reads line current (delta connection). Rated: 129 A line (74.5 A phase). Warn: &gt;129 A  |  Crit: &gt;148 A (115% rated line).  NEMA MG-1 / IEC 60034-26: Sustained phase imbalance &gt;1% causes additional rotor heating. Values &gt;5% risk premature failure.</p>
         </div>
 
         {/* ══ SECTION 5 — MECHANICAL PARAMETERS ══ */}
@@ -473,13 +473,13 @@ export function ReportPage({ controller }) {
           <SectionHd n="5">Live Mechanical Parameters — Running Condition</SectionHd>
           <SubHd>5.1 — Speed &amp; Load</SubHd>
           <ParamTable>
-            <ParamRow label="Rotor Speed"   value={fmtN(operatingPoint?.rpm,    0)} unit="RPM" limit="Rated: 1480  |  Warn: &gt;1520  |  Crit: &gt;1550" status={sOf(operatingPoint?.rpm, 1520, 1550)} />
-            <ParamRow label="Shaft Torque"  value={fmtN(operatingPoint?.torque, 1)} unit="N·m" limit="Rated: 97.3 N·m  |  Warn: &gt;90  |  Crit: &gt;110" status={sOf(operatingPoint?.torque, 90, 110)} />
-            <ParamRow label="Load Factor"   value={fmtN(operatingPoint?.loadFactor, 1)} unit="%" limit="Normal: ≤100%  |  Warn: &gt;90%" status={sOf(operatingPoint?.loadFactor, 90, 100)} />
+            <ParamRow label="Rotor Speed"   value={fmtN(operatingPoint?.rpm,    0)} unit="RPM" limit="Rated: 1480  |  Warn: &gt;1550  |  Crit: &gt;1600" status={sOf(operatingPoint?.rpm, 1550, 1600)} />
+            <ParamRow label="Shaft Torque"  value={fmtN(operatingPoint?.torque, 1)} unit="N·m" limit="Rated: 483.9 N·m  |  Warn: &gt;532  |  Crit: &gt;605" status={sOf(operatingPoint?.torque, 532, 605)} />
+            <ParamRow label="Load Factor"   value={fmtN(loadFactor, 1)} unit="%" limit="Normal: ≤100%  |  Warn: &gt;90%  (T / T_rated × 100)" status={sOf(loadFactor, 90, 100)} />
           </ParamTable>
           <SubHd style={{ marginTop: 16 }}>5.2 — Vibration (ISO 10816-3)</SubHd>
           <ParamTable>
-            <ParamRow label="Vibration RMS"    value={fmtN(sensors?.vibration?.rms,         3)} unit="g"  limit="Zone A: &lt;2.3 g  |  Zone C: &lt;7.1 g  |  Crit: ≥8.0 g" status={sOf(sensors?.vibration?.rms, 5, 8)} />
+            <ParamRow label="Vibration RMS"    value={fmtN(sensors?.vibration?.rms,         4)} unit="g"  limit="ISO 10816-3 Group II: Zone A &lt;0.51 g  |  Zone B 0.51–2.04 g  |  Zone C/D &gt;2.04 g" status={sOf(sensors?.vibration?.rms, 0.51, 2.04)} />
             <ParamRow label="Vibration Kurtosis" value={fmtN(sensors?.vibration?.kurtosis,  2)} unit=""   limit="Normal: &lt;4  |  Warn: ≥10  |  Crit: ≥16"                  status={sOf(sensors?.vibration?.kurtosis, 10, 16)} />
             <ParamRow label="Crest Factor"     value={fmtN(sensors?.vibration?.crestFactor, 2)} unit=""   limit="Normal: &lt;4  |  Warn: ≥6  |  Crit: ≥8"                     status={sOf(sensors?.vibration?.crestFactor, 6, 8)} />
           </ParamTable>
@@ -490,11 +490,11 @@ export function ReportPage({ controller }) {
         <div className="rpt-section rpt-section-break-after">
           <SectionHd n="6">Live Thermal Parameters (IEC 60034-1)</SectionHd>
           <ParamTable>
-            <ParamRow label="Stator Winding Temp."   value={fmtN(sensors?.temperature?.stator,  1)} unit="°C" limit="Warn: 65 °C  |  Crit: 85 °C  |  Class F abs. limit: 155 °C" status={sOf(sensors?.temperature?.stator,  65, 85)} />
-            <ParamRow label="Bearing Temp. (DE)"     value={fmtN(sensors?.temperature?.bearing, 1)} unit="°C" limit="Warn: 70 °C  |  Crit: 85 °C"                                  status={sOf(sensors?.temperature?.bearing, 70, 85)} />
-            <ParamRow label="Ambient Temperature"    value={fmtN(operatingPoint?.ambient,        1)} unit="°C" limit="Max: 40 °C (IEC 60034-1 standard rating)"                     status={sOf(operatingPoint?.ambient, 35, 40)} />
-            <ParamRow label="Temperature Rise (ΔT)"  value={fmtN(sensors?.temperature?.delta,   1)} unit="K"  limit="Warn: 20 K  |  Crit: 30 K (Stator − Ambient)"                 status={sOf(sensors?.temperature?.delta,   20, 30)} />
-            <ParamRow label="Thermal Hotspot (IR)"   value={fmtN(sensors?.thermal?.hotSpot,      1)} unit="°C" limit="Warn: 80 °C  |  Crit: 95 °C"                                  status={sOf(sensors?.thermal?.hotSpot,     80, 95)} />
+            <ParamRow label="Stator Winding Temp."   value={fmtN(sensors?.temperature?.stator,  1)} unit="°C" limit="Warn: 95 °C  |  Crit: 120 °C  (IEC 60034-1 Class F absolute limits)" status={sOf(sensors?.temperature?.stator,  95, 120)} />
+            <ParamRow label="Bearing Temp. (DE)"     value={fmtN(sensors?.temperature?.bearing, 1)} unit="°C" limit="Warn: 70 °C  |  Crit: 85 °C"                                       status={sOf(sensors?.temperature?.bearing, 70, 85)} />
+            <ParamRow label="Ambient Temperature"    value={fmtN(operatingPoint?.ambient,        1)} unit="°C" limit="Max: 40 °C (IEC 60034-1 standard rating)"                          status={sOf(operatingPoint?.ambient, 35, 40)} />
+            <ParamRow label="Temperature Rise (ΔT)"  value={fmtN(sensors?.temperature?.delta,   1)} unit="K"  limit="Warn: 50 K  |  Crit: 70 K  (IEC 60034-1 Class F rise limits)"      status={sOf(sensors?.temperature?.delta,   50, 70)} />
+            <ParamRow label="Thermal Hotspot (IR)"   value={fmtN(sensors?.thermal?.hotSpot,      1)} unit="°C" limit="Warn: 80 °C  |  Crit: 95 °C"                                       status={sOf(sensors?.thermal?.hotSpot,     80, 95)} />
           </ParamTable>
           <p className="rpt-table-note">IEC 60034-1: Each 10 °C above rated temperature halves insulation life (Arrhenius rule). Maintain adequate ventilation at all times.</p>
         </div>
@@ -504,7 +504,7 @@ export function ReportPage({ controller }) {
           <SectionHd n="7">AI Predictive Diagnostic Result</SectionHd>
           <p className="rpt-section-note">
             Model: Meta-Fusion (CWRU-CNN + Induction-CNN + NASA Bi-LSTM-Attn + Current-CNN + Thermal-MobileNetV2)
-            &nbsp;·&nbsp; System accuracy: 90.67 %  &nbsp;·&nbsp; F1 macro: 0.906
+            &nbsp;·&nbsp; System accuracy: 90.89 %  &nbsp;·&nbsp; F1 macro: 0.9089 (5-fold CV)
           </p>
 
           <div className="rpt-ai-result-grid">
@@ -513,6 +513,11 @@ export function ReportPage({ controller }) {
               <span className={`rpt-health-badge rpt-health-${healthCls}`} style={{ fontSize: 16 }}>
                 {healthCls === 'ok' ? '● NORMAL' : healthCls === 'warn' ? '▲ WARNING' : healthCls === 'crit' ? '■ CRITICAL' : '○ UNKNOWN'}
               </span>
+            </div>
+            <div className="rpt-ai-cell">
+              <div className="rpt-ai-cell-label">Detected Fault Type</div>
+              <div className="rpt-ai-cell-val" style={{ fontSize: '1rem' }}>{faultTypeName}</div>
+              <div className="rpt-ai-cell-sub">From meta-fusion classifier</div>
             </div>
             <div className="rpt-ai-cell">
               <div className="rpt-ai-cell-label">Remaining Useful Life</div>
@@ -529,8 +534,8 @@ export function ReportPage({ controller }) {
             </div>
             <div className="rpt-ai-cell">
               <div className="rpt-ai-cell-label">Model Accuracy</div>
-              <div className="rpt-ai-cell-val">90.67 %</div>
-              <div className="rpt-ai-cell-sub">F1 = 0.906</div>
+              <div className="rpt-ai-cell-val">90.89 %</div>
+              <div className="rpt-ai-cell-sub">F1-macro = 0.9089 (5-fold CV)</div>
             </div>
           </div>
 
@@ -549,21 +554,25 @@ export function ReportPage({ controller }) {
             </div>
           )}
 
+          {/* AI Operator Explanation from backend */}
+          {aiExplanation && (
+            <div className="rpt-ai-explanation" style={{ marginTop: 14 }}>
+              <div className="rpt-ai-expl-label">Operator Explanation (AI-generated)</div>
+              <p className="rpt-ai-expl-body">{aiExplanation}</p>
+            </div>
+          )}
+
           <table className="rpt-table rpt-table-full" style={{ marginTop: 14 }}>
             <tbody>
               <tr>
-                <td className="rpt-td-label" style={{ width: '22%' }}>Fault Status</td>
-                <td colSpan={2}><StatusBadge cls={healthCls} label={healthState.toUpperCase()} /></td>
-              </tr>
-              <tr>
-                <td className="rpt-td-label">Interpretation</td>
-                <td colSpan={2} className="rpt-td-val" style={{ fontStyle: 'italic', lineHeight: 1.6 }}>
+                <td className="rpt-td-label" style={{ width: '22%' }}>Interpretation</td>
+                <td className="rpt-td-val" style={{ fontStyle: 'italic', lineHeight: 1.6 }}>
                   {aiInterpretation(healthState)}
                 </td>
               </tr>
               <tr>
                 <td className="rpt-td-label">Required Action</td>
-                <td colSpan={2} className="rpt-td-val" style={{ fontWeight: 700, lineHeight: 1.6, color: healthCls === 'crit' ? '#b91c1c' : healthCls === 'warn' ? '#b45309' : '#15803d' }}>
+                <td className="rpt-td-val" style={{ fontWeight: 700, lineHeight: 1.6, color: healthCls === 'crit' ? '#b91c1c' : healthCls === 'warn' ? '#b45309' : '#15803d' }}>
                   {aiAction(healthState)}
                 </td>
               </tr>
@@ -627,13 +636,15 @@ export function ReportPage({ controller }) {
           <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
             <div className="rpt-modal-field" style={{ flex: 1, minWidth: 180 }}>
               <label className="rpt-modal-label">Type</label>
-              <select className="rpt-modal-input" value={nextMaintType} onChange={(e) => setNextMaintType(e.target.value)}>
+              <select className="rpt-modal-input no-print" value={nextMaintType} onChange={(e) => setNextMaintType(e.target.value)}>
                 {['Routine', 'Predictive', 'Corrective', 'Emergency'].map((o) => <option key={o}>{o}</option>)}
               </select>
+              <div className="print-only rpt-signoff-line">{nextMaintType}</div>
             </div>
             <div className="rpt-modal-field" style={{ flex: 1, minWidth: 180 }}>
               <label className="rpt-modal-label">Due Date</label>
-              <input className="rpt-modal-input" value={nextMaintDate} onChange={(e) => setNextMaintDate(e.target.value)} placeholder="DD/MM/YYYY" pattern="\d{2}/\d{2}/\d{4}" title="Format: DD/MM/YYYY (e.g. 23/05/2026)" />
+              <input className="rpt-modal-input no-print" value={nextMaintDate} onChange={(e) => setNextMaintDate(e.target.value)} placeholder="DD/MM/YYYY" pattern="\d{2}/\d{2}/\d{4}" title="Format: DD/MM/YYYY (e.g. 23/05/2026)" />
+              <div className="print-only rpt-signoff-line">{nextMaintDate || '_______________________'}</div>
             </div>
           </div>
         </div>
@@ -645,15 +656,22 @@ export function ReportPage({ controller }) {
             <p className="rpt-no-faults">✓ No active faults at time of report generation.</p>
           ) : (
             <table className="rpt-table rpt-table-full">
-              <thead><tr><th>Severity</th><th>Description</th><th>Source</th><th>Time Raised</th><th>Ack.</th><th>Required Action</th></tr></thead>
+              <thead><tr>
+                <th style={{ whiteSpace: 'nowrap' }}>Severity</th>
+                <th>Description</th>
+                <th style={{ whiteSpace: 'nowrap' }}>Source</th>
+                <th style={{ whiteSpace: 'nowrap' }}>Time Raised</th>
+                <th style={{ whiteSpace: 'nowrap' }}>Ack.</th>
+                <th>Required Action</th>
+              </tr></thead>
               <tbody>
                 {(alarms?.active ?? []).map((a, i) => (
                   <tr key={i}>
-                    <td><StatusBadge cls={{ critical: 'crit', warning: 'warn' }[a.severity?.toLowerCase()] ?? 'ok'} label={a.severity?.toUpperCase()} /></td>
+                    <td style={{ whiteSpace: 'nowrap' }}><StatusBadge cls={{ critical: 'crit', warning: 'warn' }[a.severity?.toLowerCase()] ?? 'ok'} label={a.severity?.toUpperCase()} /></td>
                     <td>{a.message ?? '—'}</td>
-                    <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{a.source ?? '—'}</td>
+                    <td style={{ fontFamily: 'monospace', fontSize: 11, whiteSpace: 'nowrap' }}>{a.source ?? '—'}</td>
                     <td style={{ whiteSpace: 'nowrap', fontSize: 11 }}>{a.raisedAt ?? '—'}</td>
-                    <td>{a.acknowledged ? 'Yes' : 'No'}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{a.acknowledged ? 'Yes' : 'No'}</td>
                     <td style={{ fontSize: 11, fontStyle: 'italic' }}>
                       {a.severity?.toLowerCase() === 'critical' ? 'Notify engineer — isolate machine' : 'Investigate within 10 min'}
                     </td>
@@ -700,13 +718,6 @@ export function ReportPage({ controller }) {
             <div className="rpt-signoff-block">
               <div className="rpt-signoff-label">Supervisor Date</div>
               <div className="rpt-signoff-line">_______________________</div>
-            </div>
-            <div className="rpt-signoff-block">
-              <div className="rpt-signoff-label">Next Inspection Due</div>
-              <input className="rpt-signoff-input no-print" value={nextInspDate}
-                onChange={(e) => setNextInspDate(e.target.value)} placeholder="DD/MM/YYYY"
-                pattern="\d{2}/\d{2}/\d{4}" title="Format: DD/MM/YYYY (e.g. 23/05/2026)" />
-              <div className="rpt-signoff-line print-only">{nextInspDate || '_______________________'}</div>
             </div>
           </div>
         </div>

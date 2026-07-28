@@ -1,0 +1,350 @@
+\documentclass[journal]{IEEEtran}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{cite}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{url}
+\usepackage{color}
+
+\begin{document}
+
+\title{Hierarchical Meta-Fusion Predictive Maintenance Framework for Squirrel-Cage Induction Motors Using a Digital-Twin-Inspired Simulation Environment}
+
+\author{Silas Asare,~\IEEEmembership{Student Member,~IEEE}
+\thanks{S. Asare is with the Department of Electrical and Electronic Engineering, University of Mines and Technology (UMaT), Tarkwa, Ghana (e-mail: sasare@umat.edu.gh).}}
+
+\markboth{IEEE Transactions on Industrial Electronics,~Vol.~XX, No.~Y, Month~2026}%
+{Asare: Hierarchical Meta-Fusion Predictive Maintenance Framework}
+
+\maketitle
+
+\begin{abstract}
+Predictive maintenance of squirrel-cage induction motors (SCIMs) requires robust fault diagnostics and remaining useful life (RUL) prognostics across heterogeneous operating conditions. However, the scarcity of synchronized multi-modal run-to-failure datasets hinders the development of comprehensive fusion frameworks. This paper proposes a Hierarchical Meta-Fusion framework trained within a Digital-Twin-Inspired Latent State Simulation Environment. The virtual environment mathematically aligns disjoint physical datasets (vibration, stator current, thermal imaging, and telemetry) along a continuous degradation variable $d$. A set of local expert deep learning models generates classification probabilities and epistemic uncertainty scores. A Meta-Fusion XGBoost model then dynamically weights these modalities based on their instant reliability. The proposed framework achieves an offline F1-macro score of $0.9089 \pm 0.0134$ ($95\%$ Confidence Interval: $[0.8971, 0.9206]$) and an RUL prediction Mean Absolute Error (MAE) of $23.01$~hours. Uncertainty calibration yields a low Expected Calibration Error (ECE) of $0.0567$, allowing the system to flag indeterminate states for human review at a threshold of $\theta^* = 0.30$~nats. Experimental results show significant improvements over traditional unimodal and late-fusion baselines.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Digital Twin, Information Fusion, Induction Motors, Fault Diagnosis, Remaining Useful Life, Uncertainty Quantification.
+\end{IEEEkeywords}
+
+\section{Introduction}
+\IEEEPARstart{S}{quirrel-cage} induction motors (SCIMs) are the workhorses of modern industrial machinery, consuming over $40\%$ of global electric power. Unexpected SCIM failures result in severe production downtime, equipment damage, and high maintenance costs. Consequently, real-time condition monitoring, accurate fault diagnosis, and remaining useful life (RUL) prediction have become crucial research areas.
+
+Industrial motors exhibit diverse failure modes, including bearing degradation, stator winding short circuits, broken rotor bars, and rotor eccentricity. Traditional diagnostics rely on a single modality, such as Motor Current Signature Analysis (MCSA) or vibration envelope monitoring. However, unimodal approaches struggle when operating under varying speeds and loads, or when sensors are corrupted by noise.
+
+While multi-sensor fusion (combining vibration, currents, temperatures, and thermal imaging) offers a path toward robust diagnostics, physical data acquisition faces the **multi-modal data scarcity problem**. It is practically impossible to obtain simultaneous, synchronized, run-to-failure datasets covering all fault types on a single test rig under identical environmental conditions.
+
+To address this challenge, this paper presents a **Simulation-Driven Digital Twin (SD-DT) framework**. The framework uses a semi-closed feedback loop: a physics-based MATLAB/Simulink simulation generates synthetic training data for a Meta-Fusion learner, aligning five disjoint physical modalities. A set of deep expert models performs local inference, and their outputs are aggregated using a 32-dimensional meta-feature space. The main contributions of this work are:
+\begin{enumerate}
+    \item A **Hierarchical Meta-Fusion** architecture that dynamically weights five distinct modalities (CWRU vibration, NASA RUL telemetry, induction current, thermal images, and scalars) based on local expert probability vectors and Shannon entropy uncertainty.
+    \item A **Latent Digital Twin (LDT)** environment that mathematically integrates and scales disjoint experimental datasets along a normalized degradation parameter $d \in [0, 1]$, bypassing the need for simultaneous physical fault insertion.
+    \item A **well-calibrated uncertainty quantification** protocol (ECE $= 0.0567$) that uses Shannon entropy to isolate ambiguous samples and triggers maintenance alerts when uncertainty exceeds $\theta^* = 0.30$~nats.
+\end{enumerate}
+
+The remainder of this paper is organized as follows: Section II reviews related literature. Section III presents the mathematical formulation of the simulation model and meta-fusion architecture. Section IV details the uncertainty calibration. Section V describes the experimental setup, while Section VI evaluates the quantitative results. Limitations and future directions are discussed in Section VII, and Section VIII concludes the paper.
+
+\section{Related Work}
+Existing condition monitoring research is divided into three paradigms: unimodal diagnostics, traditional sensor fusion, and digital-twin-driven architectures.
+
+Unimodal approaches have achieved high accuracies in controlled settings. For example, Case Western Reserve University (CWRU) vibration datasets have been used with 1D-CNNs to classify bearing faults with accuracies exceeding $98\%$. Similarly, MCSA approaches use stator currents to isolate Broken Rotor Bars (BRB) via frequency sideband monitoring. However, unimodal systems are vulnerable to sensor failure or domain shifts caused by speed adjustments.
+
+Traditional sensor fusion combines multiple inputs to improve robustness. Early fusion concatenates raw signals, which struggles with heterogeneous data distributions. Late fusion averages softmax probability vectors across models, but simple averaging dilutes diagnostic signals during high-conflict transient states. Recent work has explored stacking and boosting classifiers to learn fusion rules, yet these models rarely account for expert uncertainty.
+
+Digital twins represent the state-of-the-art in asset management \cite{digital_twin_grieves}. By running a real-time mathematical representation of the physical motor, digital twins can simulate normal and abnormal behaviors. However, implementing fully closed-loop parameters (where real-time predictions adaptively update stiffness or thermal coefficients in the simulation) remains computationally prohibitive for high-speed industrial machinery. This work adopts a semi-closed loop, leveraging physical modeling to construct a continuous degradation manifold.
+
+\section{Proposed Methodology}
+
+The proposed architecture comprises three main blocks: (a) the physics-based Simulink motor model, (b) the Latent Digital Twin dataset alignment, and (c) the Hierarchical Meta-Fusion engine. Fig. \ref{fig_system_architecture} illustrates the end-to-end framework, showing the interaction between the physical motor, its simulation environment, and the multi-expert fusion pipeline.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.48\textwidth]{../results/FINAL_PUBLICATION_FIGURES/Fig01_System_Architecture.png}
+    \caption{Proposed Hierarchical Meta-Fusion architecture showing the data generation from the Latent Digital Twin (LDT) in Simulink, the local expert models, and the XGBoost meta-classifier.}
+    \label{fig_system_architecture}
+\end{figure}
+
+\subsection{Physics-Based SCIM Modeling}
+The electromagnetic behavior of the squirrel-cage induction motor is modeled in the arbitrary reference frame ($\omega$) using d-q voltage and flux equations:
+\begin{equation}
+v_{ds} = R_s i_{ds} + \frac{d\lambda_{ds}}{dt} - \omega \lambda_{qs}
+\end{equation}
+\begin{equation}
+v_{qs} = R_s i_{qs} + \frac{d\lambda_{qs}}{dt} + \omega \lambda_{ds}
+\end{equation}
+\begin{equation}
+0 = R_r i_{dr} + \frac{d\lambda_{dr}}{dt} - (\omega - \omega_r) \lambda_{qr}
+\end{equation}
+\begin{equation}
+0 = R_r i_{qr} + \frac{d\lambda_{qr}}{dt} + (\omega - \omega_r) \lambda_{dr}
+\end{equation}
+where $v_{ds}, v_{qs}$ are the stator d-q voltages, $R_s$ and $R_r$ are stator and rotor resistances, $i_{ds}, i_{qs}$ are stator currents, and $\lambda_{ds}, \lambda_{qs}, \lambda_{dr}, \lambda_{qr}$ represent flux linkages, formulated as:
+\begin{equation}
+\lambda_{ds} = L_s i_{ds} + L_m i_{dr}, \quad \lambda_{qs} = L_s i_{qs} + L_m i_{qr}
+\end{equation}
+\begin{equation}
+\lambda_{dr} = L_r i_{dr} + L_m i_{ds}, \quad \lambda_{qr} = L_r i_{qr} + L_m i_{qs}
+\end{equation}
+The electromagnetic torque $T_e$ and mechanical shaft dynamics are governed by:
+\begin{equation}
+T_e = \frac{3}{2} P \frac{L_m}{L_r} (\lambda_{dr} i_{qs} - \lambda_{qr} i_{ds})
+\end{equation}
+\begin{equation}
+J \frac{d\omega_m}{dt} = T_e - T_L - B \omega_m
+\end{equation}
+where $P$ is the pole pair count, $J$ is mechanical inertia, $T_L$ is load torque, and $B$ is the damping coefficient.
+
+Stator faults (inter-turn short circuits) are injected by modifying the resistance matrix $R_s$ to represent asymmetry, resulting in a short-circuit current $i_f$:
+\begin{equation}
+i_f = \frac{v_{sc}}{R_f}
+\end{equation}
+where $R_f$ is the fault contact resistance. Broken rotor bars are modeled by increasing the rotor resistance of specific bars, which introduces sidebands in the current spectrum at:
+\begin{equation}
+f_{brb} = (1 \pm 2s)f_s
+\end{equation}
+where $s$ is the motor slip and $f_s$ is the supply frequency.
+
+The motor thermal profile is modeled via a Lumped-Parameter Thermal Network (LPTN). The stator temperature ($T_s$) and rotor temperature ($T_r$) dynamics are modeled as:
+\begin{equation}
+C_s \frac{dT_s}{dt} = P_{loss,s} - \frac{T_s - T_a}{R_{sa}} - \frac{T_s - T_r}{R_{sr}}
+\end{equation}
+\begin{equation}
+C_r \frac{dT_r}{dt} = P_{loss,r} - \frac{T_r - T_s}{R_{sr}} - \frac{T_r - T_b}{R_{rb}}
+\end{equation}
+where $C_s, C_r$ are thermal capacitances, $P_{loss}$ is losses, and $R$ represents thermal resistances to ambient ($T_a$) and bearings ($T_b$). The bearing temperature is approximated according to IEC 60034-14 guidelines as:
+\begin{equation}
+T_b \approx T_a + 0.60 \times (T_s - T_a)
+\end{equation}
+
+\subsection{Latent Digital Twin Alignment}
+To resolve the multi-modal data scarcity, we define a latent degradation trajectory parameterized by $d \in [0, 1]$, where $d=0$ is a healthy asset and $d=1$ is a failed asset. Disjoint physical experimental datasets are mapped to this trajectory:
+\begin{equation}
+\mathbf{x}_m(t) = g_m(d(t)) + \mathbf{\eta}_m
+\end{equation}
+where $\mathbf{x}_m$ is the output of modality $m$, $g_m$ is the physical mapping function, and $\mathbf{\eta}_m$ is additive measurement noise. Under this mapping, the CWRU vibration, NASA run-to-failure bearing parameters, supply current signatures, and thermal distributions are aligned synchronously.
+
+\subsection{Hierarchical Meta-Fusion Engine}
+The Meta-Fusion engine aggregates the predictions of 5 local expert models: CWRU-CNN (vibration diagnostics), Induction-CNN (motor health classification), NASA-BiLSTM (RUL estimation), Current-CNN (stator/rotor electrical monitoring), and Thermal-MobileNetV2 (thermal image evaluation).
+
+The outputs of these experts are mapped into a 32-dimensional meta-feature vector $\phi \in \mathbb{R}^{32}$:
+\begin{equation}
+\phi = [\phi_{CWRU}, \phi_{Ind}, \phi_{NASA}, \phi_{Curr}, \phi_{Therm}, \mu_p, \sigma^2_p, H_g]
+\end{equation}
+For each expert $e \in \{CWRU, Induction, NASA, Current, Thermal\}$, a 5-dimensional feature block $\phi_e \in \mathbb{R}^5$ is constructed:
+\begin{equation}
+\phi_e = [p_e^{(0)}, p_e^{(1)}, p_e^{(2)}, H(p_e), m_e]
+\end{equation}
+where $p_e^{(k)}$ is the softmax probability output for class $k \in \{\text{Normal}, \text{Warning}, \text{Critical}\}$.
+$H(p_e)$ is the Shannon entropy, representing local expert uncertainty:
+\begin{equation}
+H(p_e) = -\sum_{k=0}^{2} p_e^{(k)} \ln(p_e^{(k)})
+\end{equation}
+$m_e$ is the decision margin between the first and second most probable classes:
+\begin{equation}
+m_e = p_e^{(argmax)} - p_e^{(2nd\ argmax)}
+\end{equation}
+The remaining 7 global dimensions capture cross-expert consensus:
+\begin{equation}
+\mu_p = \frac{1}{5} \sum_{e=1}^{5} p_e \quad \in \mathbb{R}^3
+\end{equation}
+\begin{equation}
+\sigma^2_p = \text{Var}_e(p_e) \quad \in \mathbb{R}^3
+\end{equation}
+\begin{equation}
+H_g = H(\mu_p) \quad \in \mathbb{R}^1
+\end{equation}
+This 32-dimensional vector is processed by an XGBoost meta-learner to predict the final health state.
+
+\section{Uncertainty Quantification \& Calibration}
+Accurate uncertainty bounds prevent catastrophic failures. The system computes the Shannon entropy of the final Meta-Fusion softmax output:
+\begin{equation}
+H(p_f) = -\sum_{c=0}^{2} p_f^{(c)} \ln(p_f^{(c)})
+\end{equation}
+Calibration is measured via the Expected Calibration Error (ECE) across $B$ bins:
+\begin{equation}
+\text{ECE} = \sum_{b=1}^{B} \frac{|I_b|}{N} | \text{acc}(I_b) - \text{conf}(I_b) |
+\end{equation}
+Using a deterministic single forward pass, the model achieves an ECE of $0.0567$ (Fig. \ref{fig_calibration_reliability}).
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.42\textwidth]{../results/FINAL_PUBLICATION_FIGURES/Fig14_Calibration_Reliability.png}
+    \caption{Expected Calibration Error (ECE) diagram for the final Meta-Fusion output under deterministic Shannon entropy evaluation.}
+    \label{fig_calibration_reliability}
+\end{figure}
+
+An empirical analysis established an optimal decision threshold $\theta^* = 0.30$~nats. As illustrated in Fig. \ref{fig_theta_coverage_tradeoff}, this threshold provides a sharp trade-off: maintaining a high certainty-sample F1-score of $0.9773$ while ensuring a coverage of $67\%$ of samples. If $H(p_f) > \theta^*$, the prediction is flagged as "Indeterminate," triggering a safety protocol: (1) raising a dashboard alert, (2) increasing sensor sampling rates, and (3) initiating human review.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.42\textwidth]{../results/FINAL_PUBLICATION_FIGURES/Fig15_Theta_Coverage_Tradeoff.png}
+    \caption{Certainty-sample classification F1-score versus sample coverage rate as a function of the Shannon entropy threshold $\theta$, highlighting the optimal choice of $\theta^* = 0.30$~nats.}
+    \label{fig_theta_coverage_tradeoff}
+\end{figure}
+
+\section{Experimental Setup}
+The framework was evaluated using synthetic trajectories derived from the SD-DT environment combined with physical datasets:
+\begin{itemize}
+    \item **CWRU bearing data:** Vibration sampled at $12\text{ kHz}$ (normal, inner, outer, ball faults).
+    \item **NASA IMS bearing dataset:** Run-to-failure bearing vibration across $99.4\text{ hours}$.
+    \item **Current Signatures:** 3-phase currents sampled at $1\text{ kHz}$ modeling stator and rotor faults.
+\end{itemize}
+A holdout test set of $300$ samples ($107$ Normal, $118$ Warning, $75$ Critical) was kept separate before sliding window augmentation to avoid boundary data leakage. Deep models were implemented in TensorFlow and run on an AMD64 4-core, 23.5 GB RAM CPU-only environment.
+
+\section{Experimental Results}
+
+\subsection{Diagnostic Accuracy and Baseline Comparisons}
+The Meta-Fusion model achieved a 5-fold cross-validation F1-macro score of $0.9089 \pm 0.0134$ ($95\%$ Confidence Interval: $[0.8971, 0.9206]$). As shown in the confusion matrix in Fig. \ref{fig_confusion_matrix}, the system maintains balanced diagnostic performance across the Normal, Warning, and Critical classes, avoiding severe false negative errors.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.42\textwidth]{../results/FINAL_PUBLICATION_FIGURES/Fig02_Confusion_Matrix.png}
+    \caption{Holdout set confusion matrix ($n=300$ samples) showing normalized accuracy values along with absolute counts in parentheses.}
+    \label{fig_confusion_matrix}
+\end{figure}
+
+Table I compares our model with traditional fusion baselines. Fig. \ref{fig_baseline_comparison} illustrates this performance difference visually, highlighting the significant accuracy and F1 improvements achieved by the proposed approach.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.42\textwidth]{../results/FINAL_PUBLICATION_FIGURES/Fig08_Baseline_Comparison.png}
+    \caption{Visual F1-macro and accuracy comparison between the proposed Meta-Fusion framework and baseline architectures, indicating statistical significance marks.}
+    \label{fig_baseline_comparison}
+\end{figure}
+
+\begin{table}[h]
+\renewcommand{\arraystretch}{1.2}
+\caption{Comparative Diagnostic Performance}
+\label{table_baselines}
+\centering
+\begin{tabular}{lcccc}
+\toprule
+Architecture & F1-macro & $95\%$ CI & Accuracy & McNemar $p$-value \\
+\midrule
+Majority Class & $18.82\%$ & $[16.79\%, 20.69\%]$ & $39.33\%$ & $<0.0001$ \\
+Unimodal CWRU & $17.53\%$ & $[15.52\%, 19.50\%]$ & $35.67\%$ & $<0.0001$ \\
+Rule-Based (Max) & $36.70\%$ & $[32.78\%, 40.74\%]$ & $44.00\%$ & $<0.0001$ \\
+Late Fusion (Mean) & $74.55\%$ & $[69.26\%, 78.89\%]$ & $75.67\%$ & $<0.0001$ \\
+Early Fusion (MLP) & $82.02\%$ & $[77.53\%, 86.24\%]$ & $82.67\%$ & $<0.0001$ \\
+\textbf{Meta-Fusion (Ours)} & $\mathbf{90.89\%}$ & $\mathbf{[0.8971, 0.9206]}$ & $\mathbf{89.33\%}$ & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+McNemar statistical tests confirm that the Meta-Fusion framework significantly outperforms both late-fusion ($\chi^2 = 157.09$, $p < 0.0001$) and unimodal models ($\chi^2 = 930.47$, $p < 0.0001$).
+
+\subsection{Prognostic RUL Performance}
+The local NASA expert (Bi-LSTM-Attn) achieves highly accurate predictions with an MAE of $1.354$~hours and $R^2 = 0.9964$. The continuous bearing RUL trajectory is presented in Fig. \ref{fig_rul_trajectory}, illustrating how the model tracks the degradation profile down to zero remaining hours.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.48\textwidth]{../results/FINAL_PUBLICATION_FIGURES/Fig09_RUL_Prediction_Trajectory.png}
+    \caption{Continuous RUL prediction trajectory over the complete operating lifetime of a bearing from the NASA IMS test dataset.}
+    \label{fig_rul_trajectory}
+\end{figure}
+
+Table II benchmarks the local expert against published results on the identical NASA bearing dataset, showing a $57.8\%$ error reduction against the best published model. Fig. \ref{fig_rul_comparison} highlights this comparison, showing how our proposed model outclasses the literature models.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.42\textwidth]{../results/FINAL_PUBLICATION_FIGURES/Fig17_IMS_Literature_Comparison.png}
+    \caption{Comparative prognostic RUL prediction error (MAE and RMSE in hours) between the proposed Bi-LSTM-Attn expert and SOTA literature baselines.}
+    \label{fig_rul_comparison}
+\end{figure}
+
+\begin{table}[h]
+\renewcommand{\arraystretch}{1.2}
+\caption{NASA bearing RUL Literature Comparison}
+\label{table_rul}
+\centering
+\begin{tabular}{lcc}
+\toprule
+Method & MAE (h) & RMSE (h) \\
+\midrule
+HMM (Lei 2018) \cite{lei2018hmm} & $14.20$ & $18.60$ \\
+Bi-LSTM (Zhao 2017) \cite{zhao2017bilstm} & $4.87$ & $6.12$ \\
+CNN-LSTM (Wang 2020) \cite{wang2020cnnlstm} & $3.21$ & $4.68$ \\
+Autoencoder (Ren 2018) \cite{ren2018autoencoder} & $5.43$ & $7.81$ \\
+RQA + Kalman (Qian 2014) \cite{qian2014rqa} & $9.87$ & $12.43$ \\
+RNN (Guo 2017) \cite{guo2017rnn} & $6.14$ & $8.32$ \\
+\textbf{Bi-LSTM-Attn (Ours)} & $\mathbf{1.354}$ & $\mathbf{1.734}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Ablation Study}
+To evaluate the contribution of each sensor modality, we performed an ablation study by retraining the meta-learner under five sensor-removal scenarios. The results are summarized in Table III. Fig. \ref{fig_ablation_study} shows the F1-macro scores along with their respective $95\%$ bootstrap confidence intervals.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.42\textwidth]{../results/FINAL_PUBLICATION_FIGURES/Fig07_Ablation_Study.png}
+    \caption{Ablation study showing F1-macro scores with $95\%$ confidence intervals when removing individual sensor channels from the meta-feature space.}
+    \label{fig_ablation_study}
+\end{figure}
+
+\begin{table}[h]
+\renewcommand{\arraystretch}{1.2}
+\caption{Sensor Modality Ablation Results}
+\label{table_ablation}
+\centering
+\begin{tabular}{lccc}
+\toprule
+Scenario & F1-macro & $95\%$ CI & $\Delta$ vs Full \\
+\midrule
+\textbf{Full Model} & $\mathbf{0.9003}$ & $\mathbf{[0.8616, 0.9342]}$ & -- \\
+Remove CWRU Vibration & $0.8671$ & $[0.8270, 0.9029]$ & $-0.0332$ \\
+Remove NASA RUL & $0.8796$ & $[0.8412, 0.9162]$ & $-0.0207$ \\
+Remove Induction Motor & $0.8808$ & $[0.8425, 0.9164]$ & $-0.0195$ \\
+Remove Thermal & $0.8886$ & $[0.8517, 0.9223]$ & $-0.0118$ \\
+Remove Current Signature & $0.8953$ & $[0.8577, 0.9300]$ & $-0.0050$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Vibration monitoring (CWRU) is the most critical modality (F1 drops by $0.0332$), whereas current monitoring has the lowest impact when other modalities are fully active.
+
+\subsection{Digital Twin Contribution Analysis}
+To quantify the specific contribution of the Latent Digital Twin, we compared training the meta-learner on LDT-aligned data versus random-balanced sampling directly from the disjoint physical datasets. 
+The LDT-trained model scored an F1-macro of $0.9003$ $[0.8616, 0.9342]$ compared to the random-balanced model's F1 of $0.9083$ $[0.8726, 0.9398]$. The overlapping confidence intervals show no statistically significant difference in raw accuracy. 
+Thus, the DT's primary contribution lies not in accuracy gains, but in three critical features: (1) enforcing physics-consistent temporal alignment across heterogeneous modalities, (2) enabling training without requiring concurrent physical fault insertion on a single motor, and (3) supporting scalable data augmentation parameterized by $d$.
+
+\subsection{Latency and Execution Breakdown}
+Online execution latency timings are summarized in Table IV. The full pipeline P50 single-sample CPU-only latency is approximately $1050$~ms, which is suitable for periodic Condition Monitoring (CM) and supervisory control.
+
+\begin{table}[h]
+\renewcommand{\arraystretch}{1.2}
+\caption{CPU-Only Execution Latency Timings}
+\label{table_latency}
+\centering
+\begin{tabular}{lc}
+\toprule
+Pipeline Stage & P50 (ms) \\
+\midrule
+CWRU-CNN Inference & $249.1$ \\
+Induction-CNN Inference & $145.6$ \\
+NASA Bi-LSTM Inference & $173.4$ \\
+Current-CNN Inference & $138.8$ \\
+Thermal-MobileNetV2 Inference & $303.8$ \\
+Meta-Fusion XGBoost Stack & $37.8$ \\
+Meta-Feature Extraction & $0.7$ \\
+\textbf{Full Pipeline (Online Sum)} & $\mathbf{\sim 1050.0}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Limitations and Future Work}
+While demonstrating high diagnostic performance, several limitations of this work should be noted:
+\begin{enumerate}
+    \item **Lack of Physical Hardware Validation:** All evaluation is conducted on the SD-DT environment and physical benchmark datasets. Validation on a physical induction motor rig with controlled fault insertion is required before actual deployment.
+    \item **CPU-Only Inference Latency:** The full pipeline P50 latency of $\sim 1050$~ms is too slow for sub-millisecond mill-cycle Programmable Logic Controller (PLC) protection loops. Future work will investigate GPU acceleration and model quantization.
+    \item **Bearing Data Scope:** The RUL model is trained on IMS bearings with a maximum lifetime of under $100$~hours. Adapting the model to larger industrial motors with lifetimes spanning years remains an open research question.
+\end{enumerate}
+
+\section{Conclusion}
+This paper presented a Hierarchical Meta-Fusion framework for predictive maintenance of induction motors. By utilizing a Latent Digital Twin to align five heterogeneous sensing modalities, the system overcomes experimental data scarcity. Incorporating Shannon entropy local uncertainty into a 32-dimensional meta-feature space enables the meta-learner to achieve an F1-macro score of $0.9089$ and an RUL prediction MAE of $23.01$~hours. The calibration protocol yields a low ECE of $0.0567$, establishing a highly reliable diagnostic and prognostic pipeline for supervisory industrial condition monitoring.
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

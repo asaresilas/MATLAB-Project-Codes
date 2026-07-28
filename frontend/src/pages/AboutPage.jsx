@@ -115,7 +115,7 @@ Stator Temperature (°C): Thermocouple embedded in or near the stator windings. 
 
 Phase Current (A): RMS current drawn by each phase. An imbalance between phases of more than 5% indicates a possible stator inter-turn short, broken rotor bar, or supply voltage imbalance.
 
-Current Imbalance (%): Percentage difference between the highest and lowest phase currents relative to the average. A value above 8% is a warning; above 15% is critical.`,
+Current Imbalance (%): Percentage difference between the highest and lowest phase currents relative to the average. A value above 8% is a warning; above 12% is critical (per IEC 60034-26 derating guidance).`,
       },
     ],
   },

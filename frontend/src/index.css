@@ -3390,6 +3390,31 @@ button:focus-visible,
   font-family:     'JetBrains Mono', monospace;
 }
 
+/* ── AI Operator Explanation card ── */
+.rpt-ai-explanation {
+  padding:        10px 14px;
+  background:     #f0f9ff;
+  border-left:    4px solid #2563eb;
+  border-radius:  0 4px 4px 0;
+}
+.rpt-ai-expl-label {
+  font-size:      9.5px;
+  font-weight:    700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color:          #1e40af;
+  margin-bottom:  4px;
+}
+.rpt-ai-expl-body {
+  margin:      0;
+  font-size:   11.5px;
+  line-height: 1.65;
+  color:       #1e293b;
+}
+@media print {
+  .rpt-ai-explanation { background: #f8fafc !important; border-left-color: #2563eb !important; }
+}
+
 /* ── Readings grid ── */
 .rpt-readings-grid {
   display:               grid;

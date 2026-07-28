@@ -16,7 +16,7 @@ export function DashboardPage({ controller }) {
   }[healthState?.toUpperCase()] || 'unknown'
 
   // machine.predictionCertainty is the per-inference softmax probability stored as 0–100 %.
-  // It is NOT the 90.67 % published model accuracy.
+  // It is NOT the 90.89 % published model accuracy.
   const predictionCertainty = machine?.predictionCertainty != null
     ? `${parseFloat(machine.predictionCertainty).toFixed(1)}%`
     : '—'
@@ -41,7 +41,7 @@ export function DashboardPage({ controller }) {
 
   // IEC 60034-1 Class F insulation: warn > 95 °C, critical > 120 °C
   const tempStatus = tempVal == null ? 'accent' : tempVal > 120 ? 'crit' : tempVal > 95 ? 'warn' : 'ok'
-  const vibStatus  = vibRms  == null ? 'accent' : vibRms  > 8  ? 'crit' : vibRms  > 5  ? 'warn' : 'ok'
+  const vibStatus  = vibRms  == null ? 'accent' : vibRms  > 2.04 ? 'crit' : vibRms  > 0.51 ? 'warn' : 'ok'
 
   /* Trend series */
   const vibSeries  = trendSeries?.find?.((t) => t.key === 'vibration')?.points  ?? []
@@ -163,7 +163,7 @@ export function DashboardPage({ controller }) {
           value={imbalance != null ? imbalance.toFixed(2) : '—'}
           unit="%"
           sub="Max–min / avg × 100"
-          status={imbalance == null ? 'idle' : imbalance > 15 ? 'crit' : imbalance > 8 ? 'warn' : 'ok'}
+          status={imbalance == null ? 'idle' : imbalance > 12 ? 'crit' : imbalance > 8 ? 'warn' : 'ok'}
         />
       </div>
 
@@ -183,8 +183,8 @@ export function DashboardPage({ controller }) {
               unit="g"
               label="Vibration RMS"
               height={420}
-              warnAt={5}
-              critAt={8}
+              warnAt={0.51}
+              critAt={2.04}
             />
           </div>
         </div>

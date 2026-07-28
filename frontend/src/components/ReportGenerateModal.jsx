@@ -69,14 +69,13 @@ export function ReportGenerateModal({ session, onGenerate, onClose }) {
     model:         '',
     serialNo:      '',
     frameSize:     '',
-    ratedPower:    '15 kW',
+    ratedPower:    '75 kW',
     voltage:       '400 V / 3Ø / 50 Hz',
-    ratedCurrent:  '30 A',
+    ratedCurrent:  '129 A (line) / 74.5 A (phase)',
     ratedSpeed:    '1480 RPM',
     effClass:      'IE3',
     insulation:    'Class F',
     dutyCycle:     'S1',
-    thermalProt:   'Thermistor (PTC)',
     enclosure:     'IP55 / TEFC',
     mounting:      'B3 (Foot)',
     installedDate: '',
@@ -210,7 +209,6 @@ export function ReportGenerateModal({ session, onGenerate, onClose }) {
                   <Field label="Efficiency Class"><Select value={motor.effClass} onChange={setM('effClass')} options={['IE1', 'IE2', 'IE3', 'IE4', 'IE5', 'Other']} /></Field>
                   <Field label="Insulation Class"><Select value={motor.insulation} onChange={setM('insulation')} options={['Class A', 'Class B', 'Class F', 'Class H', 'Other']} /></Field>
                   <Field label="Duty Cycle"><Select value={motor.dutyCycle} onChange={setM('dutyCycle')} options={['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8']} /></Field>
-                  <Field label="Thermal Protection"><Input value={motor.thermalProt} onChange={setM('thermalProt')} /></Field>
                   <Field label="Enclosure (IP)"><Input value={motor.enclosure} onChange={setM('enclosure')} placeholder="e.g. IP55 / TEFC" /></Field>
                   <Field label="Mounting"><Select value={motor.mounting} onChange={setM('mounting')} options={['B3 (Foot)', 'B5 (Flange)', 'B35 (Foot+Flange)', 'Other']} /></Field>
                   <Field label="Installation Date"><Input value={motor.installedDate} onChange={setM('installedDate')} placeholder="DD/MM/YYYY" /></Field>

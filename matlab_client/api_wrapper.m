@@ -7,11 +7,16 @@ function [h_out, f_out, c_out, a_out, r_out, t_out] = api_wrapper(vib_mag, curre
 %
 % OUTPUTS (all numeric scalars for Simulink ports):
 %   h_out  - Health state:   0=Unknown, 1=Normal, 2=Warning, 3=Critical
-%   f_out  - Fault type:     0=None, 1=Bearing, 2=Stator, 3=Rotor, 4=Tool, 5=Thermal
-%   c_out  - Confidence      [0–100 %]
-%   a_out  - Accuracy/certainty (1 – uncertainty) [0–100 %]
+%   f_out  - Categorical fault code (single dominant fault):
+%              0 = Healthy          4 = Thermal Fault
+%              1 = Bearing Fault    5 = Multiple Faults
+%              2 = Rotor Fault
+%              3 = Shaft Fault
+%            Read from backend field 'fault_code' (not 'fault_flags' bitmask).
+%   c_out  - Confidence [0–100 %]
+%   a_out  - Validated meta-fusion F1-macro accuracy [90.89 % — fixed constant]
 %   r_out  - Remaining Useful Life (hours, from NASA Bi-LSTM or class approximation)
-%   t_out  - Thermal fault:  0=None/OK, 1=Fault, 2=Fan fault
+%   t_out  - Thermal severity: 0=OK, 1=WARNING (>95°C or ΔT>50K), 2=CRITICAL (>120°C or ΔT>70K)
 
 persistent client last_connect_attempt;
 
@@ -45,70 +50,86 @@ try
 
     % --- Build structured payload matching PredictionEngine.predict() dict path ---
     % Keys: vibration (Nx1), current (Nx3), scalars ([RPM; Torque; MotorTemp; AmbTemp])
+    % thermal_image (3x3 Kelvin matrix) is included directly so the backend's
+    % predict_from_matrix() handles normalise → jet colormap → CNN internally.
     payload = struct();
-    payload.vibration = double(vib_mag(:));          % column vector → JSON array
+    % Transform Sensor outputs m/s²; CWRU-CNN was trained in g → convert here.
+    payload.vibration = double(vib_mag(:)) / 9.81;   % m/s² → g, column vector → JSON array
     payload.current   = double(current_matrix);      % Nx3 matrix  → JSON array-of-arrays
     payload.scalars   = double(scalars(:)');          % row vector   → JSON array [RPM,T,Tm,Ta]
-
-    % --- Main prediction ---
-    res = client.predict(payload);
-
-    % --- Thermal image (optional, independent WebSocket call) ---
-    t_res_exists = false;
-    t_res = struct('alert_level', 'NORMAL', 'predicted_class', '');
     if has_thermal
-        try
-            t_res = client.predict_thermal(Thermal_Matrix);
-            t_res_exists = true;
-            if ~strcmp(t_res.alert_level, 'NORMAL')
-                t_out = 1;
-                if isfield(t_res, 'predicted_class') && contains(t_res.predicted_class, 'Fan')
-                    t_out = 2;
-                end
-            end
-        catch
-            % Thermal path not available — leave t_out = 0
-        end
+        payload.thermal_image = double(Thermal_Matrix);  % 3x3 Kelvin → JSON array-of-arrays
     end
 
-    % --- Health state (h_out): worst of main + thermal ---
+    % --- Main prediction (includes thermal when available) ---
+    res = client.predict(payload);
+
+    % --- Health state from main response (thermal now embedded in meta-fusion) ---
     h_out = 1;  % Normal until proven otherwise
-    if strcmp(res.alert_level, 'CRITICAL') || (t_res_exists && strcmp(t_res.alert_level, 'CRITICAL'))
+    if strcmp(res.alert_level, 'CRITICAL')
         h_out = 3;
-    elseif strcmp(res.alert_level, 'WARNING') || (t_res_exists && strcmp(t_res.alert_level, 'WARNING'))
+    elseif strcmp(res.alert_level, 'WARNING')
         h_out = 2;
     end
 
-    % --- Fault type (f_out): use explicit fault_code from backend ---
-    % 0=None/Unknown  1=Bearing  2=Stator  3=Rotor  4=Tool/Industrial  5=Thermal
-    % fault_code is set by the backend prediction engine and never relies on
-    % string parsing, so it is robust to any changes in model_used formatting.
+    % --- Thermal output: read standalone thermal_status field ---
+    % thermal_status is independent of fault_code — fires on high temperature
+    % OR Thermal-CNN alarm even when a bearing/current fault_code was assigned.
+    %   0 = No thermal alarm
+    %   1 = Thermal WARNING  (motor_temp > 95 degC or dT > 50 K)
+    %   2 = Thermal CRITICAL (motor_temp > 120 degC or dT > 70 K)
+    % Legacy fallback: if backend is old version without thermal_status field,
+    % use fault_code == 5 as before.
+    t_out = 0;
+    if isfield(res, 'thermal_status') && ~isempty(res.thermal_status)
+        t_out = double(res.thermal_status);
+    elseif isfield(res, 'fault_code') && res.fault_code == 5
+        t_out = 1;
+    end
+
+    % --- Fault code (f_out): categorical 0–5 from backend ---
+    % Backend now returns 'fault_code' as a single integer (0=Healthy … 5=Multiple).
+    % This is simpler and unambiguous compared to the old bitmask 'fault_flags'.
     f_out = 0;
     if isfield(res, 'fault_code') && ~isempty(res.fault_code)
         f_out = double(res.fault_code);
     end
-    % Thermal fault always overrides when thermal sensor independently detects a fault
-    if t_out > 0 && h_out > 1
-        f_out = 5;
+
+    % Read human-readable fault name for the fprintf log below
+    fault_name = 'Healthy';
+    if isfield(res, 'fault_type_name') && ~isempty(res.fault_type_name)
+        fault_name = res.fault_type_name;
     end
 
-    % --- Confidence & certainty ---
+    % --- Confidence ---
+    % a_out is the validated meta-fusion F1-macro (90.89 %) — a fixed constant.
+    % The old formula (1 - uncertainty)*100 always returned 100 % because the
+    % backend uses n_iter=1 (deterministic), making uncertainty=0 always.
+    % Hardcode to the experimentally confirmed value from 5-fold CV (CLAUDE.md).
     if isfield(res, 'confidence'),  c_out = res.confidence * 100; end
-    if isfield(res, 'uncertainty'), a_out = (1.0 - res.uncertainty) * 100; end
+    a_out = 90.89;   % validated F1-macro; NOT (1-uncertainty)*100
 
     % --- RUL (hours) ---
-    % The backend now returns rul_hours directly (real NASA Bi-LSTM output or
-    % class-based approximation). Use it; never derive from 'prediction' field.
     if isfield(res, 'rul_hours') && ~isempty(res.rul_hours) && res.rul_hours >= 0
         r_out = res.rul_hours;
     else
-        % Fallback if old backend version doesn't send rul_hours:
-        % prediction field = class_index/2 (0=Normal, 0.5=Warning, 1.0=Critical)
-        % Invert: remaining life ≈ (1 – prediction) × 20000 h MOL
         if isfield(res, 'prediction')
             r_out = (1.0 - res.prediction) * 20000;
         end
     end
+
+    % --- Informative console log (once per prediction cycle) ---
+    health_labels = {'UNKNOWN','NORMAL','WARNING','CRITICAL'};
+    h_label = health_labels{min(h_out + 1, 4)};
+    vib_rms_g = sqrt(mean(double(vib_mag) .^ 2)) / 9.81;
+    fprintf('[AI] Health: %-8s | Fault: %-16s | Code: %d | Conf: %5.1f%% | RUL: ', ...
+        h_label, fault_name, f_out, c_out);
+    if r_out >= 0
+        fprintf('%6.1f h\n', r_out);
+    else
+        fprintf('  N/A\n');
+    end
+    fprintf('     Vib RMS: %.3f g | Thermal: %d\n', vib_rms_g, t_out);
 
 catch ME
     fprintf('[API_WRAPPER] Error: %s\n', ME.message);

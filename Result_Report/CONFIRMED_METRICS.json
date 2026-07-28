@@ -1,0 +1,83 @@
+{
+  "_source": "CLAUDE.md §Confirmed Metric Values — 2026-05-27 full pipeline rerun with v5 StatisticsExtractor",
+  "_note": "All values are experimentally confirmed. Never fabricate or round these values in any publication.",
+
+  "primary_ieee_paper_metrics": {
+    "f1_macro_5fold_cv":       0.9089,
+    "f1_macro_95ci_lower":     0.8971,
+    "f1_macro_95ci_upper":     0.9206,
+    "bootstrap_f1_ci_lower":   0.8959,
+    "bootstrap_f1_ci_upper":   0.9220,
+    "bootstrap_n_resamples":   1000,
+    "accuracy_5fold_cv":       0.9089,
+    "auc_macro_5fold_cv":      0.9803,
+    "f1_macro_single_holdout": 0.8948,
+    "accuracy_single_holdout": 0.8933,
+    "roc_auc_ovr":             0.9798,
+    "rul_mae_hours":           23.011,
+    "rul_rmse_hours":          26.810,
+    "rul_nrmse":               0.2697,
+    "rul_nrmse_note":          "RMSE/max_RUL where max_RUL=99.4h",
+    "bilstm_mae_hours":        1.354,
+    "bilstm_rmse_hours":       1.734,
+    "bilstm_r2":               0.9964
+  },
+
+  "per_class_holdout_300_samples": {
+    "NORMAL":   { "precision": 0.960, "recall": 0.888, "f1": 0.922, "n": 107 },
+    "WARNING":  { "precision": 0.841, "recall": 0.898, "f1": 0.869, "n": 118 },
+    "CRITICAL": { "precision": 0.893, "recall": 0.893, "f1": 0.893, "n": 75  }
+  },
+
+  "latency_cpu_only_warm_start": {
+    "hardware": "AMD64 Family 23, 4-core/8-thread, 23.5 GB RAM, CPU-only",
+    "note": "P50 values are single-sample (not batch throughput)",
+    "cwru_cnn":          { "p50_ms": 249.1, "p99_ms": 935.7 },
+    "induction_cnn":     { "p50_ms": 145.6, "p99_ms": 275.7 },
+    "nasa_bilstm":       { "p50_ms": 173.4, "p99_ms": 771.6 },
+    "current_cnn":       { "p50_ms": 138.8, "p99_ms": 390.3 },
+    "thermal_mobilenet": { "p50_ms": 303.8, "p99_ms": 855.4 },
+    "meta_fusion_xgb":   { "p50_ms": 37.8,  "p99_ms": 50.5  },
+    "meta_feature_extr": { "p50_ms": 0.67,  "p99_ms": 1.25  },
+    "full_pipeline_p50_approx_ms": 1050
+  },
+
+  "statistical_significance_mcnemar": {
+    "vs_majority_class":  { "chi2": 777.09, "p_value": 0.0000, "significant": true },
+    "vs_late_fusion":     { "chi2": 157.09, "p_value": 0.0000, "significant": true },
+    "vs_cwru_single":     { "chi2": 930.47, "p_value": 0.0000, "significant": true }
+  },
+
+  "expert_model_real_data": {
+    "cwru_cnn":      { "accuracy": 1.0000, "note": "3 classes present in cache; dynamic label detection" },
+    "nasa_bilstm":   { "mae_hours": 1.354, "r2": 0.9964, "source": "Bi-LSTM-Attn_metadata.json" },
+    "induction_cnn": { "accuracy": 0.5333, "note": "Temporal distribution shift; 4-class model on 3-class test" },
+    "current_cnn_v5": { "accuracy_holdout": 0.8793, "accuracy_cache": 0.8950, "model": "StatisticsExtractor v5" }
+  },
+
+  "calibration": {
+    "ece_deterministic_shannon":  0.0567,
+    "mean_entropy_nats":          0.2849,
+    "mc_dropout_ece_t5_to_t50":  "0.21 to 0.24",
+    "mc_dropout_conclusion":      "Deterministic Shannon entropy is better calibrated. Do NOT use MC Dropout."
+  },
+
+  "ablation_study": {
+    "note": "Retrain meta-learner per scenario (correct methodology from ablation_proper.json)",
+    "full_model":           { "f1_macro": 0.9003, "ci_lower": 0.8616, "ci_upper": 0.9342 },
+    "remove_cwru":          { "f1_macro": 0.8671, "delta": -0.0332, "note": "most impactful" },
+    "remove_nasa_rul":      { "f1_macro": 0.8796, "delta": -0.0207 },
+    "remove_induction":     { "f1_macro": 0.8808, "delta": -0.0195 },
+    "remove_thermal":       { "f1_macro": 0.8886, "delta": -0.0118 },
+    "remove_current":       { "f1_macro": 0.8953, "delta": -0.0050, "note": "least impactful" }
+  },
+
+  "baseline_comparison": {
+    "majority_class":       { "f1_macro": 0.1882, "accuracy": 0.3933 },
+    "unimodal_cwru":        { "f1_macro": 0.1753, "accuracy": 0.3567 },
+    "rule_based":           { "f1_macro": 0.3670, "accuracy": 0.4400 },
+    "late_fusion":          { "f1_macro": 0.7455, "accuracy": 0.7567 },
+    "early_fusion_mlp":     { "f1_macro": 0.8202, "accuracy": 0.8267 },
+    "meta_fusion_ours":     { "f1_macro": 0.9089, "accuracy": 0.9089 }
+  }
+}

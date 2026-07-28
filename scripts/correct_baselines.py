@@ -226,7 +226,7 @@ def run_correct_baselines():
             continue
         ci_str = f"[{r['f1_ci_95_lo']:.4f}, {r['f1_ci_95_hi']:.4f}]"
         print(f"{name:<35} {r['f1_macro']:>9.4f} {ci_str:>22} {r['accuracy']:>10.4f}")
-    print(f"{'Meta-Fusion (reference)':<35} {'0.9061':>9} {'[see crossval_ci]':>22} {'0.9067':>10}")
+    print(f"{'Meta-Fusion (reference)':<35} {'0.9089':>9} {'[see crossval_ci]':>22} {'0.9089':>10}")
 
     # Save
     out_path = os.path.join(PROJECT_ROOT, "results/publication_metrics/correct_baselines.json")

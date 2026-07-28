@@ -80,7 +80,7 @@ export function SensorPage({ controller }) {
   /* Mechanical detail channels */
   // Thresholds per IEC 60034-1 (thermal), ISO 10816-3 (vibration), IEC 60034-14 (bearings)
   const mechanicalChannels = [
-    { name: 'Vibration RMS',   value: vib.rms,         unit: 'g',   min: 0,  max: 15,  warnAt: 5,   critAt: 8,   std: 'ISO 10816-3 Zone B/C boundary: 5 g' },
+    { name: 'Vibration RMS',   value: vib.rms,         unit: 'g',   min: 0,  max: 4.0, warnAt: 0.51, critAt: 2.04, std: 'ISO 10816-3 Group II: Zone A<0.51 g | Zone B 0.51–2.04 g | Zone C/D >2.04 g' },
     { name: 'Crest Factor',    value: vib.crestFactor,  unit: '',    min: 0,  max: 12,  warnAt: 6,   critAt: 9,   std: 'Normal: <4.0; Bearing fault: >6' },
     { name: 'Kurtosis',        value: vib.kurtosis,     unit: '',    min: 0,  max: 20,  warnAt: 8,   critAt: 12,  std: 'ISO 13373-3: Healthy≈3; Fault>8' },
     { name: 'Stator Temp',     value: temp.stator,      unit: '°C',  min: 20, max: 160, warnAt: 95,  critAt: 120, std: 'IEC 60034-1 Class F: 155 °C limit' },
@@ -140,16 +140,16 @@ export function SensorPage({ controller }) {
           <div className="gauge-card-top">
             <GaugeRing
               value={!isNaN(torque) ? torque : 0}
-              max={160}
+              max={700}
               unit="N·m"
               label="Shaft Torque"
-              status={!isNaN(torque) && torque > 130 ? 'crit' : !isNaN(torque) && torque > 110 ? 'warn' : 'ok'}
+              status={!isNaN(torque) && torque > 605 ? 'crit' : !isNaN(torque) && torque > 532 ? 'warn' : 'ok'}
               size={100}
             />
           </div>
           <div className="gauge-meta">
-            <span>Rated: 97.3 N·m | Warn: &gt;110 | Crit: &gt;130</span>
-            <span>Load: {!isNaN(torque) ? ((torque / 97.3) * 100).toFixed(1) : '--'}%</span>
+            <span>Rated: 483.9 N·m | Warn: &gt;532 | Crit: &gt;605</span>
+            <span>Load: {!isNaN(torque) ? ((torque / 483.9) * 100).toFixed(1) : '--'}%</span>
           </div>
         </div>
 
@@ -161,12 +161,12 @@ export function SensorPage({ controller }) {
               max={10}
               unit="g"
               label="Vibration RMS"
-              status={sensorStatus(vib.rms, 5, 8)}
+              status={sensorStatus(vib.rms, 0.51, 2.04)}
               size={100}
             />
           </div>
           <div className="gauge-meta">
-            <span>ISO 10816 Zone A: &lt;2.3 g</span>
+            <span>ISO 10816-3 Group II: Zone A &lt;0.51 g | Zone B 0.51–2.04 g</span>
             <span>Kurtosis: {vib.kurtosis?.toFixed(2) ?? '--'}</span>
           </div>
         </div>
@@ -206,16 +206,16 @@ export function SensorPage({ controller }) {
           value={!isNaN(torque) ? torque : null}
           points={series.torque?.points ?? []}
           color="#38bdf8"
-          warnAt={110} critAt={130}
-          status={isNaN(torque) ? 'idle' : torque > 130 ? 'crit' : torque > 110 ? 'warn' : 'ok'}
+          warnAt={532} critAt={605}
+          status={isNaN(torque) ? 'idle' : torque > 605 ? 'crit' : torque > 532 ? 'warn' : 'ok'}
         />
         <SparkCard
           label="Vibration RMS" unit="g"
           value={vib.rms}
           points={series.vibration?.points ?? []}
           color="#f97316"
-          warnAt={5} critAt={8}
-          status={sensorStatus(vib.rms, 5, 8)}
+          warnAt={0.51} critAt={2.04}
+          status={sensorStatus(vib.rms, 0.51, 2.04)}
         />
         <SparkCard
           label="Stator Temp" unit="°C"
@@ -258,8 +258,8 @@ export function SensorPage({ controller }) {
               unit="A"
               label="Phase U Current"
               height={500}
-              warnAt={33}
-              critAt={35}
+              warnAt={129}
+              critAt={148}
             />
           </div>
         </div>

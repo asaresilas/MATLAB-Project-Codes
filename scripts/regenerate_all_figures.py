@@ -115,7 +115,7 @@ CLASS_COLS  = [COL_NORMAL, COL_WARNING, COL_CRITICAL]
 # ════════════════════════════════════════════════════════════════════════════
 print('Fig01: System Architecture...')
 fig, ax = plt.subplots(figsize=FIG_SIZE)
-ax.set_xlim(0, 12); ax.set_ylim(0, 9); ax.axis('off')
+ax.set_xlim(-3.2, 12); ax.set_ylim(0, 9); ax.axis('off')
 
 def box(ax, x, y, w, h, label, fc='#d6eaf8', ec='#2471a3', fs=10):
     rect = mpatches.FancyBboxPatch((x-w/2, y-h/2), w, h,
@@ -128,10 +128,10 @@ def arr(ax, x1, y1, x2, y2):
     ax.annotate('', xy=(x2, y2), xytext=(x1, y1),
         arrowprops=dict(arrowstyle='->', color=COL_DARK, lw=2), zorder=2)
 
-# Layer labels
+# Layer labels — positioned to left of all boxes (xlim starts at -3.2)
 for y, label in [(8.3, 'PHYSICAL LAYER'), (6.3, 'EXPERT AI LAYER'),
                  (4.0, 'META-FUSION LAYER'), (1.7, 'DECISION LAYER')]:
-    ax.text(0.2, y, label, fontsize=9, color='#555', style='italic', va='center')
+    ax.text(-3.0, y, label, fontsize=9, color='#555', style='italic', va='center')
 
 # MATLAB/Simulink source
 box(ax, 6, 8.0, 3.5, 0.9, 'MATLAB / Simulink\nDigital Twin', fc='#fdfefe', ec='#7d6608', fs=11)
@@ -450,7 +450,7 @@ ax.fill_between([0, rul_max],
 # Metrics annotation
 mae_s = official['rul_mae']
 rmse_s = official['rul_rmse']
-ax.text(0.05, 0.95, f'System-level\nMAE  = {mae_s:.2f} h\nRMSE = {rmse_s:.2f} h\nNRMSE = {mae_s/y_true_rul.max():.3f}',
+ax.text(0.05, 0.95, f'System-level\nMAE  = {mae_s:.2f} h\nRMSE = {rmse_s:.2f} h\nNRMSE = {rmse_s/y_true_rul.max():.3f}',
         transform=ax.transAxes, fontsize=12, va='top',
         bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
 ax.set_xlabel('True RUL (h)', fontsize=14)

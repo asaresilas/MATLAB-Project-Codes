@@ -404,8 +404,8 @@ attn = attn / attn.max()
 fig, ax = plt.subplots(figsize=(DC*0.75, SC*0.92))
 
 # Health zone bands — visible alpha, distinct colours
-crit_h  = max_rul * 0.15   # ~15 h → CRITICAL
-warn_h  = max_rul * 0.40   # ~40 h → WARNING boundary
+crit_h  = max_rul * (1/3)   # ~33 h CRITICAL  (d>=0.67 -> RUL<=33 h)
+warn_h  = max_rul * (2/3)   # ~66 h WARNING/NORMAL boundary (d=0.33)
 ax.axhspan(0,       crit_h,   alpha=0.20, color='#FF4444', zorder=1)
 ax.axhspan(crit_h,  warn_h,   alpha=0.18, color='#FFA500', zorder=1)
 ax.axhspan(warn_h,  max_rul+8, alpha=0.12, color='#33AA55', zorder=1)

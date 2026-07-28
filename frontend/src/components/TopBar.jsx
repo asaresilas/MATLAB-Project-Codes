@@ -7,6 +7,7 @@ const STATE_CONFIG = {
   simulation_mode: { cls: 'ok',   label: '◎ Simulation',    title: 'Running in simulation mode' },
   connected:       { cls: 'ok',   label: '● Connected',     title: 'WebSocket connected' },
   stale_data:      { cls: 'warn', label: '◑ Stale Data',    title: 'No new data for > 5 s' },
+  connecting:      { cls: 'warn', label: '↺ Connecting',    title: 'Establishing WebSocket connection…' },
   reconnecting:    { cls: 'warn', label: '↺ Reconnecting',  title: 'Attempting to reconnect…' },
   degraded:        { cls: 'warn', label: '◑ Degraded',      title: 'Partial data available' },
   disconnected:    { cls: 'err',  label: '○ Disconnected',  title: 'WebSocket closed' },

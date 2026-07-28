@@ -47,9 +47,12 @@ const normalizeLivePayload = (payload, machineId, previousSensors, previousOpera
       uncertainty: payload.uncertainty ?? 0,
       model_used: payload.model_used || 'UNAVAILABLE',
       inference_time_ms: payload.inference_time_ms ?? 0,
+      fault_type_name: payload.fault_type_name || payload.machine?.faultTypeName || 'Healthy',
+      explanation:     payload.explanation || '',
       machine: {
         machineId: payload.machine?.machineId || payload.machine_id || machineId,
         rulHours: payload.machine?.rulHours ?? null,
+        faultTypeName: payload.fault_type_name || payload.machine?.faultTypeName || 'Healthy',
       },
       sensors:          payload.sensors || previousSensors,
       _sensorsFresh:    !!payload.sensors,
@@ -63,6 +66,8 @@ const normalizeLivePayload = (payload, machineId, previousSensors, previousOpera
   return {
     timestamp: payload.timestamp,
     alert_level: payload.alert_level || 'UNKNOWN',
+    fault_type_name: payload.fault_type_name || 'Healthy',
+    explanation:     payload.explanation || '',
     confidence: payload.confidence ?? 0,
     uncertainty: payload.uncertainty ?? 0,
     model_used: payload.model_used || 'UNAVAILABLE',
@@ -210,6 +215,8 @@ export function useDashboardController() {
     const nextMachine = {
       machineId: sample.machine?.machineId || settings.machineLabel,
       healthState,
+      faultTypeName: sample.fault_type_name || sample.machine?.faultTypeName || 'Healthy',
+      explanation:   sample.explanation || '',
       predictionCertainty: confidence,
       uncertainty,
       rulHours: sample.machine?.rulHours != null ? Math.round(sample.machine.rulHours) : null,

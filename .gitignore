@@ -1,4 +1,4 @@
-# Python environments
+# ── Python ────────────────────────────────────────────────────────────────────
 .venv/
 venv/
 env/
@@ -6,34 +6,64 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-
-# Dependencies and Builds
-node_modules/
+*.egg-info/
 dist/
 build/
-out/
+.eggs/
 
-# Datasets
+# ── Node / Frontend ───────────────────────────────────────────────────────────
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.env
+frontend/.env.local
+
+# ── Datasets (too large for Git) ──────────────────────────────────────────────
 datasets/
-
-# IDEs
-.vscode/
-.idea/
-
-# Data and Models
 data/*.npz
 data/*.csv
+
+# ── Trained models (use Git-LFS or release assets instead) ───────────────────
 Trained_models/
 models/
-results/
 
-# Logs and DB
+# ── Experiment results & figures (regenerable) ───────────────────────────────
+results/
+backend_result/
+
+# ── Logs & databases ─────────────────────────────────────────────────────────
 *.log
 logs/
-users.db
+backend/users.db
+backend/backend_log.txt
+backend/backend_out.txt
 maintenance_log.mat
 
-# OS generated files
+# ── Sensitive / credentials ───────────────────────────────────────────────────
+backend/user_credentials.json
+.env
+.env.*
+*.secret
+
+# ── IDE & OS ──────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
 .DS_Store
 Thumbs.db
+nul
 
+# ── Jupyter / temp ────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.tmp
+*.bak
+pdf_page_*.png
+report_review.pdf
+
+# ── Paper drafts (binary Word docs — keep only LaTeX source) ─────────────────
+Paper/*.docx
+Paper/*.pdf
+Paper/AutoRecovery*
+
+# ── Claude Code internal ──────────────────────────────────────────────────────
+.claude/

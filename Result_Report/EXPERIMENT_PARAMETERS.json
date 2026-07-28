@@ -1,0 +1,104 @@
+{
+  "_description": "Physical motor parameters and operating conditions used in the MATLAB/Simulink Digital Twin experiments.",
+
+  "motor_specification": {
+    "type":           "Squirrel-cage induction motor (SCIM)",
+    "rating_kw":      75,
+    "voltage_v":      400,
+    "frequency_hz":   50,
+    "poles":          4,
+    "frame":          "IEC 280M",
+    "rated_speed_rpm": 1480,
+    "rated_torque_Nm": 483.9,
+    "rated_current_A": 129,
+    "efficiency":     0.94,
+    "power_factor":   0.87,
+    "insulation_class": "F",
+    "bearing_model":  "SKF 6316 deep-groove (drive end)",
+    "bearing_n_balls": 9,
+    "bearing_ball_dia_mm": 25.4,
+    "bearing_pitch_dia_mm": 120.65
+  },
+
+  "vibration_synthesis": {
+    "sample_rate_hz":  12000,
+    "note":            "Matches CWRU Dataset training sample rate",
+    "buffer_size":     2048,
+    "window_ms":       170.67,
+    "healthy_1x_amplitude_ms2": 0.50,
+    "healthy_2x_amplitude_ms2": 0.15,
+    "healthy_noise_ms2": 0.08
+  },
+
+  "operating_conditions": {
+    "NORMAL": {
+      "A_impact_N":        0,
+      "delta_offset_mm":   0,
+      "T_stator_K":        333.15,
+      "T_stator_C":        60,
+      "T_ambient_K":       313.15,
+      "T_ambient_C":       40,
+      "Ia_rms_A":          85,
+      "RPM":               1480,
+      "load_fraction":     0.65,
+      "iso_10816_zone":    "A"
+    },
+    "WARNING": {
+      "A_impact_N":        120,
+      "delta_offset_mm":   0.3,
+      "T_stator_K":        368.15,
+      "T_stator_C":        95,
+      "T_ambient_K":       313.15,
+      "T_ambient_C":       40,
+      "Ia_rms_A":          110,
+      "RPM":               1465,
+      "load_fraction":     0.83,
+      "iso_10816_zone":    "B/C",
+      "fault_type":        "Early bearing outer-race defect (0.007 inch pit, CWRU severity 1)"
+    },
+    "CRITICAL": {
+      "A_impact_N":        350,
+      "delta_offset_mm":   1.5,
+      "T_stator_K":        403.15,
+      "T_stator_C":        130,
+      "T_ambient_K":       313.15,
+      "T_ambient_C":       40,
+      "Ia_rms_A":          138,
+      "RPM":               1440,
+      "load_fraction":     1.045,
+      "iso_10816_zone":    "D",
+      "fault_type":        "Severe bearing outer-race defect (0.021 inch pit, CWRU severity 3) + shaft misalignment"
+    }
+  },
+
+  "threshold_references": {
+    "iso_10816_3_group2_g": {
+      "zone_a": "< 0.51",
+      "zone_b": "0.51 to 2.04",
+      "zone_c": "2.04 to 3.27",
+      "zone_d": "> 3.27",
+      "note":   "Converted from mm/s RMS using f_excitation = 25 Hz approx."
+    },
+    "iec_60034_1_class_f_absolute_C": {
+      "stator_warning":  95,
+      "stator_critical": 120,
+      "delta_t_warning_K":  50,
+      "delta_t_critical_K": 70,
+      "note": "Absolute winding temperature limits, not temperature rise limits"
+    },
+    "line_current_A": {
+      "rated":    129,
+      "warning":  129,
+      "critical": 148,
+      "note":     "Warning at 100% of rated (any overload); critical at 115% of rated per IEC 60034-1"
+    }
+  },
+
+  "physics_gate_thresholds": {
+    "note": "Backend physics gate: if ALL four conditions hold simultaneously, force NORMAL regardless of CNN output.",
+    "vib_rms_max_g":     1.5,
+    "motor_temp_max_C":  85.0,
+    "delta_t_max_K":     40.0,
+    "curr_rms_max_A":    129.0
+  }
+}

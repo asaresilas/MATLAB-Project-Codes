@@ -55,9 +55,9 @@ export function ThreePhaseCard({ u, v, w, imbalance, voltage = 400, frequency = 
   const avg = (vals.u + vals.v + vals.w) / 3
 
   const imbalancePct = imbalance != null ? imbalance : 0
-  const imbalanceStatus = imbalancePct > 15 ? 'crit' : imbalancePct > 8 ? 'warn' : 'ok'
-  const imbalanceColor  = imbalancePct > 15 ? 'var(--crit)' : imbalancePct > 8 ? 'var(--warn)' : 'var(--ok)'
-  const imbalanceLabel  = imbalancePct > 15 ? 'HIGH — CHECK SUPPLY' : imbalancePct > 8 ? 'ELEVATED' : 'BALANCED'
+  const imbalanceStatus = imbalancePct > 12 ? 'crit' : imbalancePct > 8 ? 'warn' : 'ok'
+  const imbalanceColor  = imbalancePct > 12 ? 'var(--crit)' : imbalancePct > 8 ? 'var(--warn)' : 'var(--ok)'
+  const imbalanceLabel  = imbalancePct > 12 ? 'HIGH — CHECK SUPPLY' : imbalancePct > 8 ? 'ELEVATED' : 'BALANCED'
 
   return (
     <div className="card three-phase-card">

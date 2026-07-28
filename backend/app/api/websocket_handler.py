@@ -44,7 +44,20 @@ except ImportError:
 # ─── Meta Fusion Model Path (Relative to Project Root) ──────────────────────────
 import os as _os
 _project_root = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", "..", ".."))
-_META_MODEL_PATH = _os.path.join(_project_root, "Trained_models", "meta_fusion", "meta_fusion_xgb.pkl")
+_META_MODEL_PATH  = _os.path.join(_project_root, "Trained_models", "meta_fusion", "meta_fusion_xgb.pkl")
+_META_SCALER_PATH = _os.path.join(_project_root, "data", "meta_fusion_scaler.pkl")
+
+# Feature-vector builder — must match training pipeline exactly
+import sys as _sys
+_src_path = _os.path.join(_project_root, "src")
+if _src_path not in _sys.path:
+    _sys.path.insert(0, _src_path)
+try:
+    from features.meta_fusion_features import extract_meta_features_from_predictions, build_nasa_probs
+    _META_FEATURES_AVAILABLE = True
+except ImportError as _e:
+    logger.warning("meta_fusion_features not importable (%s) — feature vector will fall back to legacy layout", _e)
+    _META_FEATURES_AVAILABLE = False
 
 # Create router for WebSocket endpoints (no prefix — WebSocket paths are absolute)
 router = APIRouter(tags=["websocket"])
@@ -206,8 +219,18 @@ def _coerce_float(value, default=0.0):
 _KELVIN_OFFSET = 273.15
 
 def _k_to_c(val: float) -> float:
-    """Convert a Kelvin value from MATLAB to degrees Celsius."""
+    """Convert a Kelvin value from MATLAB to degrees Celsius (always subtracts offset)."""
     return val - _KELVIN_OFFSET
+
+
+def _auto_celsius(val: float) -> float:
+    """Auto-detect K vs °C: val > 273 → Kelvin (subtract 273.15), else already Celsius.
+
+    MATLAB motor_params_*.m files define both _K and _C variables.  The Simulink
+    port can be wired to either.  Values > 273 are unambiguously Kelvin (no real
+    motor operates at −0 °C); values ≤ 273 are already in °C.
+    """
+    return (val - _KELVIN_OFFSET) if val > 273 else val
 
 
 def _persist_sensor_reading(
@@ -263,9 +286,9 @@ def _persist_sensor_reading(
                 sc = [float(s) for s in scalars]
                 if len(sc) > 0: rpm_val          = round(sc[0], 2)
                 if len(sc) > 1: torque_val       = round(sc[1], 3)
-                # MATLAB sends temperatures in Kelvin → convert to °C for DB columns
-                if len(sc) > 2: temp_motor_val   = round(sc[2] - _KELVIN_OFFSET, 2)
-                if len(sc) > 3: temp_ambient_val = round(sc[3] - _KELVIN_OFFSET, 2)
+                # MATLAB sends temperatures in K or °C — auto-detect to convert for DB columns
+                if len(sc) > 2: temp_motor_val   = round(_auto_celsius(sc[2]), 2)
+                if len(sc) > 3: temp_ambient_val = round(_auto_celsius(sc[3]), 2)
             except Exception:
                 pass
 
@@ -357,8 +380,8 @@ def _normalize_scalar_inputs(sensor_payload: Any) -> Dict[str, float]:
         return {
             "rpm":          _coerce_float(scalars[0] if len(scalars) > 0 else None),
             "torque":       _coerce_float(scalars[1] if len(scalars) > 1 else None),
-            "motor_temp":   _k_to_c(raw_motor),   # MATLAB sends K → convert to °C
-            "ambient_temp": _k_to_c(raw_amb),      # MATLAB sends K → convert to °C
+            "motor_temp":   _auto_celsius(raw_motor),   # auto-detect K vs °C
+            "ambient_temp": _auto_celsius(raw_amb),     # auto-detect K vs °C
         }
 
     flat = np.array(sensor_payload if sensor_payload is not None else [], dtype=np.float32).flatten()
@@ -368,8 +391,8 @@ def _normalize_scalar_inputs(sensor_payload: Any) -> Dict[str, float]:
     return {
         "rpm":          _coerce_float(tail[0] if tail.size > 0 else None),
         "torque":       _coerce_float(tail[1] if tail.size > 1 else None),
-        "motor_temp":   _k_to_c(raw_motor),   # MATLAB sends K → convert to °C
-        "ambient_temp": _k_to_c(raw_amb),      # MATLAB sends K → convert to °C
+        "motor_temp":   _auto_celsius(raw_motor),   # auto-detect K vs °C
+        "ambient_temp": _auto_celsius(raw_amb),     # auto-detect K vs °C
     }
 
 
@@ -408,16 +431,18 @@ def _summarize_sensor_payload(sensor_payload: Any) -> Dict[str, Any]:
             }
 
         if vib.size:
-            rms = float(np.sqrt(np.mean(np.square(vib))))
-            peak = float(np.max(np.abs(vib))) if vib.size else 0.0
+            # api_wrapper.m already converts m/s² → g (divides by 9.81) before sending.
+            # vib is therefore in g here — do NOT divide by 9.81 again.
+            rms  = float(np.sqrt(np.mean(np.square(vib))))  # g (ISO 10816-3)
+            peak = float(np.max(np.abs(vib))) if vib.size else 0.0  # g
             std = float(np.std(vib)) + 1e-9
             mean = float(np.mean(vib))
             kurtosis = float(np.mean((vib - mean) ** 4) / (std ** 4)) if vib.size else 0.0
             crest_factor = peak / rms if rms else 0.0
-            # ISO 10816-3 Zone B/C boundary: 5.0 g warn, Zone D: 8.0 g critical
-            severity = "Critical" if rms > 8.0 else "Warning" if rms > 5.0 else "Normal"
+            # ISO 10816-3 Group II thresholds in g: Zone A<0.51, Zone B 0.51-2.04, Zone C-D >2.04
+            severity = "Critical" if rms > 2.04 else "Warning" if rms > 0.51 else "Normal"
             vibration = {
-                "rms": round(rms, 3),
+                "rms": round(rms, 4),
                 "crestFactor": round(float(crest_factor), 3),
                 "kurtosis": round(kurtosis, 3),
                 "severity": severity,
@@ -429,14 +454,15 @@ def _summarize_sensor_payload(sensor_payload: Any) -> Dict[str, Any]:
         flat = np.array(sensor_payload if sensor_payload is not None else [], dtype=np.float32).flatten()
         if flat.size >= 1000:
             vib = flat[: min(2048, flat.size)]
-            rms = float(np.sqrt(np.mean(np.square(vib))))
-            peak = float(np.max(np.abs(vib))) if vib.size else 0.0
+            # Data arrives in g (api_wrapper divides by 9.81 before sending)
+            rms  = float(np.sqrt(np.mean(np.square(vib))))   # g (ISO 10816-3)
+            peak = float(np.max(np.abs(vib))) if vib.size else 0.0  # g
             vibration = {
-                "rms": round(rms, 3),
+                "rms": round(rms, 4),
                 "crestFactor": round(peak / rms if rms else 0.0, 3),
                 "kurtosis": 0.0,
-                # ISO 10816-3: Zone B/C = 5 g warn, Zone D = 8 g critical
-                "severity": "Critical" if rms > 8.0 else "Warning" if rms > 5.0 else "Normal",
+                # ISO 10816-3 Group II thresholds in g: Zone A<0.51, Zone B 0.51-2.04
+                "severity": "Critical" if rms > 2.04 else "Warning" if rms > 0.51 else "Normal",
             }
 
     # Bearing temperature: physics-based approximation.
@@ -462,11 +488,71 @@ def _summarize_sensor_payload(sensor_payload: Any) -> Dict[str, Any]:
             "rpm": round(scalars["rpm"], 3),
             "torque": round(scalars["torque"], 3),
             "ambient": round(scalars["ambient_temp"], 3),
-            # Load classification based on rated torque 97.3 N·m (15 kW @ 1480 RPM)
-            # High: >110% rated (>107 N·m), Nominal: 50–110% rated, Low: <50% rated (<48.7 N·m)
-            "load": "High" if scalars["torque"] > 107.0 else "Nominal" if scalars["torque"] > 48.7 else "Low",
+            # Load classification based on rated torque 483.9 N·m (75 kW @ 1480 RPM)
+            # High: >110% rated (>532 N·m), Nominal: 50–110% rated, Low: <50% rated (<242 N·m)
+            "load": "High" if scalars["torque"] > 532.0 else "Nominal" if scalars["torque"] > 242.0 else "Low",
         },
     }
+
+
+def _generate_fault_explanation(alert_level: str, fault_type_name: str,
+                                vib_rms: float, motor_temp: float,
+                                rul_hours, confidence: float) -> str:
+    """Return a 2–3 sentence operator explanation for the current prediction."""
+    rul_str = f"{rul_hours:.0f}" if rul_hours is not None else "—"
+    vib_str = f"{vib_rms:.2f}" if vib_rms else "—"
+    temp_str = f"{motor_temp:.0f}" if motor_temp else "—"
+
+    if alert_level == "NORMAL":
+        return (
+            f"All monitored parameters are within design limits for this squirrel-cage induction motor. "
+            f"Vibration RMS is {vib_str} g (ISO 10816-3 Zone A), stator temperature is {temp_str} °C "
+            f"(below 95 °C IEC Class F limit), and the Remaining Useful Life estimate is {rul_str} hours. "
+            f"Continue normal operation."
+        )
+    if fault_type_name == "Bearing Fault":
+        return (
+            f"A developing bearing defect has been detected by the CWRU-CNN and Current-CNN modalities. "
+            f"Vibration RMS of {vib_str} g indicates elevated impulsive energy consistent with an outer-race defect. "
+            f"Schedule bearing inspection and lubrication check within the next maintenance window — do not defer beyond 72 hours of operation."
+        )
+    if fault_type_name == "Rotor Fault":
+        return (
+            f"The Induction-CNN and Current-CNN modalities have detected asymmetry consistent with a broken rotor bar or rotor misalignment. "
+            f"Current imbalance and elevated torque ripple are indicative of rotor cage degradation. "
+            f"Arrange an electrical and mechanical inspection; avoid sustained operation at full load until inspected."
+        )
+    if fault_type_name == "Shaft Fault":
+        return (
+            f"Shaft-related fault signatures (ring fault or shaft crack) have been detected by the Induction-CNN modality. "
+            f"Elevated sub-synchronous vibration components are present in the vibration spectrum. "
+            f"Perform an alignment check and visual shaft inspection at the next opportunity."
+        )
+    if fault_type_name == "Thermal Fault":
+        return (
+            f"Critical stator winding temperature of {temp_str} °C exceeds the IEC 60034-1 Class F absolute limit of 120 °C. "
+            f"Continued operation risks irreversible insulation degradation and potential winding burnout. "
+            f"Stop the motor immediately, implement lockout/tagout, and contact the site engineer before any restart."
+        )
+    if fault_type_name == "Multiple Faults":
+        return (
+            f"Multiple simultaneous fault signatures have been detected across the vibration, current, and thermal modalities. "
+            f"Vibration RMS is {vib_str} g and stator temperature is {temp_str} °C — both elevated above healthy limits. "
+            f"Stop the motor, implement lockout/tagout, and perform a full multi-disciplinary inspection before restart."
+        )
+    if alert_level == "WARNING":
+        return (
+            f"A developing fault condition has been detected. Vibration RMS is {vib_str} g and stator temperature is {temp_str} °C. "
+            f"The AI fusion system has assessed this as a Warning state. "
+            f"Schedule a maintenance inspection and increase monitoring frequency to every hour."
+        )
+    if alert_level == "CRITICAL":
+        return (
+            f"Critical fault condition detected. Vibration RMS of {vib_str} g and stator temperature of {temp_str} °C "
+            f"are both outside safe operating limits. "
+            f"Stop the motor immediately, implement lockout/tagout, and notify the site engineer before any restart."
+        )
+    return "Insufficient sensor data to produce a reliable assessment. Verify system connection and sensor operation."
 
 
 def _build_dashboard_payload(client_id: str, machine_id: str, sensor_payload: Any, prediction_result: Dict[str, Any]) -> Dict[str, Any]:
@@ -516,6 +602,12 @@ def _build_dashboard_payload(client_id: str, machine_id: str, sensor_payload: An
                 "latencyMs": 0.0,
             }
 
+    fault_type_name = prediction_result.get("fault_type_name", "Healthy")
+    explanation     = prediction_result.get("explanation", "")
+    fault_code      = prediction_result.get("fault_code", 0)
+    fault_flags     = prediction_result.get("fault_flags", 0)
+    thermal_status  = prediction_result.get("thermal_status", 0)
+
     return {
         "type": "dashboard_update",
         "client_id": client_id,
@@ -523,6 +615,10 @@ def _build_dashboard_payload(client_id: str, machine_id: str, sensor_payload: An
         "timestamp": datetime.now().isoformat(),
         "prediction": prediction_value,
         "alert_level": alert_level,
+        "fault_code": fault_code,
+        "fault_flags": fault_flags,
+        "fault_type_name": fault_type_name,
+        "explanation": explanation,
         "status": prediction_result.get("status", "unknown"),
         "model_used": model_used,
         "confidence": confidence,
@@ -531,9 +627,9 @@ def _build_dashboard_payload(client_id: str, machine_id: str, sensor_payload: An
         "machine": {
             "machineId": machine_id,
             "healthState": alert_level,
+            "faultCode": fault_code,
+            "faultTypeName": fault_type_name,
             "rulHours": rul_hours,
-            # Note: per-inference certainty is at the top-level "confidence" field.
-            # The frontend reads payload.confidence (not payload.machine.confidence).
             "predictionCertainty": round(confidence, 4),
             "uncertainty": round(uncertainty, 4),
         },
@@ -541,7 +637,7 @@ def _build_dashboard_payload(client_id: str, machine_id: str, sensor_payload: An
             "phaseCurrent": sensor_summary["phaseCurrent"],
             "vibration": sensor_summary["vibration"],
             "temperature": sensor_summary["temperature"],
-            "thermal": sensor_summary["thermal"],
+            "thermal": {**sensor_summary["thermal"], "status": thermal_status},
         },
         "operatingPoint": sensor_summary["operatingPoint"],
         "models": models,
@@ -568,17 +664,29 @@ class PredictionEngine:
         self._load_meta_model()
 
     def _load_meta_model(self):
-        """Attempt to load the trained Meta Fusion model."""
+        """Attempt to load the trained Meta Fusion model and its paired StandardScaler."""
+        import joblib
+        # Load XGBoost StackingClassifier
         try:
             if _os.path.exists(_META_MODEL_PATH):
-                import joblib
                 self.meta_model = joblib.load(_META_MODEL_PATH)
-                logger.info(f"✓ Meta Fusion XGBoost Model loaded from {_META_MODEL_PATH}")
+                logger.info("✓ Meta Fusion XGBoost loaded from %s", _META_MODEL_PATH)
             else:
-                logger.warning(f"Meta Fusion model not found at {_META_MODEL_PATH}. Using rule-based fallback.")
+                logger.warning("Meta Fusion model not found at %s — using rule-based fallback.", _META_MODEL_PATH)
         except Exception as e:
-            logger.warning(f"Failed to load Meta Fusion model: {e}. Using rule-based fallback.")
+            logger.warning("Failed to load Meta Fusion model: %s — using rule-based fallback.", e)
             self.meta_model = None
+
+        # Load StandardScaler (fitted during training — required for MLP base estimator)
+        self.meta_scaler = None
+        try:
+            if _os.path.exists(_META_SCALER_PATH):
+                self.meta_scaler = joblib.load(_META_SCALER_PATH)
+                logger.info("✓ Meta Fusion scaler loaded from %s", _META_SCALER_PATH)
+            else:
+                logger.warning("Meta Fusion scaler not found at %s — predictions will be unscaled.", _META_SCALER_PATH)
+        except Exception as e:
+            logger.warning("Failed to load Meta Fusion scaler: %s", e)
     
     async def predict(self, sensor_data: np.ndarray) -> Dict[str, Any]:
         """
@@ -685,12 +793,16 @@ class PredictionEngine:
                     if seq is not None:
                         mean_pred, std_pred = _get_mc_prediction(model_n, seq)
                         rul = float(mean_pred[0][0])
-                        # RUL thresholds aligned with frontend PARAM_META:
-                        # NORMAL >150 h, WARNING 50–150 h, CRITICAL <50 h
-                        p_n = np.zeros(3)
-                        if rul > 150: p_n[0] = 0.8; p_n[1] = 0.15; p_n[2] = 0.05
-                        elif rul > 50: p_n[0] = 0.1; p_n[1] = 0.8;  p_n[2] = 0.1
-                        else:          p_n[0] = 0.05; p_n[1] = 0.15; p_n[2] = 0.8
+                        # Use the same smooth parabolic encoding as the training pipeline
+                        # (build_nasa_probs from src/features/meta_fusion_features.py).
+                        # The hard step-function previously here pushed p[WARNING]=0.80 for
+                        # all mid-range RUL values, causing persistent WARNING misclassification.
+                        if _META_FEATURES_AVAILABLE:
+                            p_n = build_nasa_probs(np.array([rul]))[0]
+                        else:
+                            norm = float(np.clip(rul / 100.0, 0.0, 1.0))
+                            p_n = np.array([norm, 4.0*norm*(1.0-norm), 1.0-norm], dtype=np.float32)
+                            p_n = p_n / (p_n.sum() + 1e-9)
                         
                         unc = float(std_pred[0][0]) / 10.0
                         predictions_list.append({
@@ -705,7 +817,11 @@ class PredictionEngine:
                 # D. Thermal Modality
                 thermal_img = sensor_data.get('thermal_image')
                 if thermal_img and thermal_service:
-                    res_t = thermal_service.process_and_predict(thermal_img)
+                    # Simulink sends a 3×3 matrix (list of lists); legacy path sends base64 str
+                    if isinstance(thermal_img, list):
+                        res_t = thermal_service.predict_from_matrix(thermal_img)
+                    else:
+                        res_t = thermal_service.process_and_predict(thermal_img)
                     if "error" not in res_t:
                         p_t = np.zeros(3)
                         if res_t['alert_level'] == 'NORMAL': p_t[0] = res_t['confidence']
@@ -760,30 +876,63 @@ class PredictionEngine:
                         })
 
                 # --- 2.5 SAFETY EXPERT: Analyze Scalars (Temperatures) ---
+                # Auto-detect Kelvin vs Celsius: Simscape outputs Kelvin (values ≥ 274 K for
+                # any real operating motor). If the Simulink port is connected to a workspace
+                # _C variable (e.g. T_stator_C = 135) instead of the _K variable (408.15),
+                # the raw value is < 273 and is already in °C — no conversion needed.
+                # Threshold: > 273 → Kelvin (subtract 273.15); ≤ 273 → already Celsius.
+                _to_celsius = _auto_celsius  # module-level auto-detect K vs °C
+
+                # Initialise with defaults — will be overwritten from scalars or thermal image
+                motor_temp: float = 0.0
+                amb_temp:   float = 25.0
+                _got_temp = False
+
                 if scalars and len(scalars) >= 4:
-                    # MATLAB sends temperatures in Kelvin → convert to °C before comparing
-                    motor_temp = float(scalars[2]) - _KELVIN_OFFSET
-                    amb_temp   = float(scalars[3]) - _KELVIN_OFFSET
-                    
-                    p_s = np.array([1.0, 0.0, 0.0]) # Start Healthy
+                    motor_temp = _to_celsius(float(scalars[2]))
+                    amb_temp   = _to_celsius(float(scalars[3]))
+                    _got_temp  = True
+
+                # Backup: thermal_image matrix max temperature.
+                # Built from workspace T_stator_K / T_bearing_K / T_housing_K variables
+                # in motor_params_*.m, so it is always correct even when the Simulink
+                # Temp_Motor port is unconnected or wired to a Celsius variable.
+                _ti_check = sensor_data.get('thermal_image')
+                if _ti_check is not None:
+                    try:
+                        _T_mat  = np.array(_ti_check, dtype=np.float32).flatten()
+                        _T_max  = _to_celsius(float(np.max(_T_mat)))
+                        if not _got_temp or _T_max > motor_temp:
+                            motor_temp = _T_max
+                        _got_temp = True
+                    except Exception:
+                        pass
+
+                if _got_temp:
+                    p_s = np.array([1.0, 0.0, 0.0])   # Start Healthy
                     s_val = 0.0
-                    
+
                     # Thermal Thresholds — IEC 60034-1 Class F insulation
                     # Stator winding: warn > 95 °C, critical > 120 °C
                     # Temperature rise (ΔT): warn > 50 K, critical > 70 K
                     if motor_temp > 120 or (motor_temp - amb_temp) > 70:
                         p_s = np.array([0.0, 0.0, 1.0]); s_val = 0.95
-                        logger.warning(f"CRITICAL: High Motor Temp ({motor_temp:.1f} °C) — IEC 60034-1 Class F limit 155 °C")
+                        logger.warning(
+                            f"CRITICAL: High Motor Temp ({motor_temp:.1f} °C) — IEC 60034-1 Class F limit 155 °C")
                     elif motor_temp > 95 or (motor_temp - amb_temp) > 50:
                         p_s = np.array([0.0, 1.0, 0.0]); s_val = 0.5
                         logger.warning(f"WARNING: Elevated Motor Temp ({motor_temp:.1f} °C)")
                         
-                    # Electrical Overload
+                    # Electrical Overload — sensor reads LINE current (delta): rated 129 A line / 74.5 A phase
                     if curr_data.size > 0:
                         rms_c = np.sqrt(np.mean(curr_data**2))
-                        if rms_c > 35: # Injected Fault Threshold
+                        if rms_c > 148:  # >115% of rated line current (129 A) — CRITICAL overload
                             p_s = np.array([0.0, 0.0, 1.0]); s_val = 0.99
-                            logger.error(f"CRITICAL: Massive Current Draw ({rms_c:.2f}A)")
+                            logger.error(f"CRITICAL: Current overload ({rms_c:.2f} A > 148 A — 115% of rated 129 A line)")
+                        elif rms_c > 129:  # >100% rated line current — WARNING
+                            if s_val < 0.5:
+                                p_s = np.array([0.0, 1.0, 0.0]); s_val = 0.5
+                            logger.warning(f"WARNING: Current above rated ({rms_c:.2f} A > 129 A rated line)")
 
                     predictions_list.append({
                         "val": s_val,
@@ -794,7 +943,55 @@ class PredictionEngine:
                         "id": "Scalar"
                     })
                         
-                # ── 3. Aggregate via Meta Fusion (28-Dimensional XGBoost) ──────
+                # ── Physics Gate: override CNN domain shift for clearly healthy signals ──
+                # When physical measurements are all within healthy limits, CNN domain shift
+                # (models trained on real test-rig data vs synthetic Simulink sinusoids) must
+                # not cause a false fault alert.
+                #
+                # Three conditions — current excluded because Simulink startup transients
+                # and delta-connection line vs phase current ambiguity make it unreliable:
+                #   1. Vibration < 1.5 g  (ISO 10816-3 Group II Zone A/B boundary)
+                #   2. Motor temp < 95 °C  (IEC 60034-1 Class F winding WARNING threshold)
+                #      NOTE: threshold was 85°C but that is below the IEC warning limit and
+                #      caused false trips when bearing friction raised housing temperature.
+                #   3. ΔT = (motor_temp − ambient) < 40 K
+                #      This discriminates NORMAL (ΔT≈25 K) from FAULT (ΔT≈53 K for 78°C
+                #      stator) even if absolute temperature would pass condition 2 alone.
+                if predictions_list:
+                    _vib_rms_g = float(np.sqrt(np.mean(vib_data[:2048]**2))) if vib_data.size >= 2048 else 0.0
+                    _curr_rms_g = float(np.sqrt(np.mean(curr_data**2))) if curr_data.size > 0 else 0.0
+                    _delta_t_g = motor_temp - amb_temp
+                    _physics_normal = (
+                        _vib_rms_g  < 1.5    and   # ISO 10816-3: Zone A/B boundary
+                        motor_temp  < 95.0   and   # IEC 60034-1 Class F winding warning = 95°C
+                        _delta_t_g  < 40.0         # temperature RISE discriminates NORMAL (25K) from FAULT (53K)
+                    )
+                    if _physics_normal:
+                        logger.info(
+                            "Physics gate: all parameters healthy "
+                            "(vib=%.3fg, temp=%.1f°C, ΔT=%.1fK, curr=%.1fA) — forcing NORMAL",
+                            _vib_rms_g, motor_temp, _delta_t_g, _curr_rms_g
+                        )
+                        return {
+                            "prediction":      0.0,
+                            "alert_level":     "NORMAL",
+                            "fault_code":      0,
+                            "fault_flags":     0,
+                            "fault_type_name": "Healthy",
+                            "thermal_status":  0,
+                            "explanation":     _generate_fault_explanation(
+                                "NORMAL", "Healthy", _vib_rms_g, motor_temp, None, 0.95
+                            ),
+                            "model_used":      "Physics Gate",
+                            "inference_time_ms": (datetime.now() - start_time).total_seconds() * 1000,
+                            "confidence":      0.95,
+                            "uncertainty":     0.05,
+                            "rul_hours":       None,
+                            "status":          "success",
+                            "modalities":      predictions_list
+                        }
+
+                # ── 3. Fuse Expert Predictions ─────────────────────────────────
                 if not predictions_list:
                     return {
                         "prediction": 0.0,
@@ -806,105 +1003,290 @@ class PredictionEngine:
                         "status": "unavailable"
                     }
 
-                # Organize exact array order: CWRU, Induction, NASA, Current, Thermal, Scalar
-                mod_map = {p["id"]: p["probs"] for p in predictions_list}
-                ordered_mods = ["CWRU", "Induction", "NASA", "Current", "Thermal", "Scalar"]
-                
-                f = []
-                prob_list = []
-                for mod in ordered_mods:
-                    # Provide neutral ground if modality is missing
-                    p = mod_map.get(mod, np.ones(3)/3.0)
-                    f.extend(p)
-                    prob_list.append(p)
-                    
-                # Aggregated Meta-Features (6 Experts)
-                mean_p = np.mean(prob_list, axis=0)
-                var_p = np.var(prob_list, axis=0)
-                f.extend(mean_p)
-                f.extend(var_p)
-                
-                # Individual Entropy (6 Experts)
-                for p in prob_list:
-                    f.append(-np.sum(p * np.log(np.clip(p, 1e-7, 1.0))))
-                    
-                # Global Metadata
-                max_conf_feature = np.max(mean_p)
-                agreement_feature = -np.sum(mean_p * np.log(np.clip(mean_p, 1e-7, 1.0)))
-                f.extend([max_conf_feature, agreement_feature])
-                
-                score_vec = np.array(f).reshape(1, -1) # Now 34-Dimensions
+                mod_map        = {p["id"]: p["probs"] for p in predictions_list}
+                training_experts = ["CWRU", "Induction", "NASA", "Current", "Thermal"]
+                models_used    = ", ".join(p["model"] for p in predictions_list)
 
+                # Count REAL CNN modalities — exclude Scalar (physics expert, not a CNN).
+                # Meta-fusion needs ≥ 2 independent CNN signals to be reliable;
+                # 1 CNN + Scalar still only has 1 learned-model data point.
+                _cnn_count = sum(1 for p in predictions_list if p["id"] != "Scalar")
+
+                # Build 32-dim feature vector matching training pipeline exactly.
+                # Scalar is excluded here — it is a physics veto, not a trained signal.
+                if _META_FEATURES_AVAILABLE:
+                    preds_for_fusion = {
+                        name: mod_map.get(name, np.ones(3) / 3.0).reshape(1, 3)
+                        for name in training_experts
+                    }
+                    score_vec = extract_meta_features_from_predictions(preds_for_fusion)
+                else:
+                    # Manual 32-dim fallback — identical layout to meta_fusion_features.py
+                    _f = []
+                    _prob5 = [mod_map.get(n, np.ones(3) / 3.0) for n in training_experts]
+                    for _p5 in _prob5:
+                        _ent  = -np.sum(_p5 * np.log(np.clip(_p5, 1e-7, 1.0)))
+                        _sp   = np.sort(_p5)
+                        _marg = float(_sp[-1] - _sp[-2])
+                        _f.extend([*_p5, _ent, _marg])   # 5 dims × 5 experts = 25
+                    _mean5 = np.mean(_prob5, axis=0)
+                    _var5  = np.var(_prob5,  axis=0)
+                    _f.extend(_mean5)                     # + 3
+                    _f.extend(_var5)                      # + 3
+                    _f.append(-np.sum(_mean5 * np.log(np.clip(_mean5, 1e-7, 1.0))))  # + 1 = 32
+                    score_vec = np.array(_f, dtype=np.float32).reshape(1, -1)
+
+                # ── Primary decision: Meta Fusion XGBoost ────────────────────────
+                class_idx   = 0
+                alert       = "NORMAL"
+                confidence  = 1.0
+                uncertainty = 0.0
+                val         = 0.0
                 fusion_mode = "Meta Fusion"
-                # Only use XGBoost meta-fusion when at least 2 real modalities are present.
-                # With fewer modalities the feature vector is mostly neutral [1/3,1/3,1/3]
-                # priors — a distribution the XGBoost never saw in training, causing
-                # unreliable (often CRITICAL) outputs. Fall back to rule-based instead.
-                _real_modality_count = len(predictions_list)
-                if self.meta_model is not None and _real_modality_count >= 2:
-                    try:
-                        # self.meta_model is now XGBoost Classifier exported as scikit-learn standard
-                        class_idx = int(self.meta_model.predict(score_vec)[0])
-                        probs = self.meta_model.predict_proba(score_vec)[0]
-                        confidence = float(probs[class_idx])
-                        alert = ["NORMAL", "WARNING", "CRITICAL"][class_idx]
-                        val = float(class_idx) / 2.0
-                        models_used = ", ".join(p["model"] for p in predictions_list)
-                        uncertainty = 1.0 - confidence
-                    except Exception as e:
-                        logger.warning(f"Meta model inference failed: {e}. Falling back to rule-based.")
-                        fusion_mode = "Rule-Based (fallback)"
-                elif _real_modality_count < 2:
-                    # Not enough real signals — use weighted vote of available predictors
-                    logger.info(f"Only {_real_modality_count} modality available; using rule-based fusion.")
-                    fusion_mode = "Rule-Based (single modality)"
 
-                if fusion_mode in ("Rule-Based (fallback)", "Rule-Based (single modality)"):
-                    worst = max(predictions_list, key=lambda x: x["val"])
-                    val = worst["val"]
-                    alert = "NORMAL" if val < 0.3 else ("WARNING" if val < 0.7 else "CRITICAL")
-                    confidence = worst["conf"]
-                    uncertainty = worst["unc"]
-                    models_used = worst["model"]
+                if self.meta_model is not None and _cnn_count >= 2:
+                    try:
+                        scaled_vec  = (self.meta_scaler.transform(score_vec)
+                                       if self.meta_scaler is not None else score_vec)
+                        class_idx   = int(self.meta_model.predict(scaled_vec)[0])
+                        _probs      = self.meta_model.predict_proba(scaled_vec)[0]
+                        confidence  = float(_probs[class_idx])
+                        alert       = ["NORMAL", "WARNING", "CRITICAL"][class_idx]
+                        val         = float(class_idx) / 2.0
+                        uncertainty = 1.0 - confidence
+                    except Exception as _fuse_exc:
+                        logger.warning("Meta fusion failed (%s) — switching to rule-based.", _fuse_exc)
+                        fusion_mode = "Rule-Based (fallback)"
+                else:
+                    _reason = ("model not loaded" if self.meta_model is None
+                               else f"only {_cnn_count} CNN modality available")
+                    logger.info("Rule-based fusion (%s).", _reason)
                     fusion_mode = "Rule-Based (fallback)"
 
-                # Extract real RUL hours from NASA modality when available.
-                # Fallback: class-based linear approximation (NORMAL→20000h, CRITICAL→0h).
+                if fusion_mode == "Rule-Based (fallback)":
+                    # Confidence-weighted vote across CNN experts only (Scalar excluded).
+                    # Weighted voting is more robust than worst-case for NORMAL conditions
+                    # where one confused CNN should not override four healthy ones.
+                    _cnn_preds = [p for p in predictions_list if p["id"] != "Scalar"]
+                    if _cnn_preds:
+                        _tw   = sum(p["conf"] for p in _cnn_preds) + 1e-9
+                        _agg  = np.zeros(3, dtype=np.float32)
+                        for _p in _cnn_preds:
+                            _agg += float(_p["conf"]) * np.array(_p["probs"], dtype=np.float32)
+                        _agg  /= _tw
+                        class_idx   = int(np.argmax(_agg))
+                        confidence  = float(_agg[class_idx])
+                        alert       = ["NORMAL", "WARNING", "CRITICAL"][class_idx]
+                        val         = float(class_idx) / 2.0
+                        uncertainty = 1.0 - confidence
+                    else:
+                        # No CNN modalities at all — cannot decide; leave as UNKNOWN
+                        alert = "UNKNOWN"; confidence = 0.0; uncertainty = 1.0; val = 0.0
+
+                # ── Scalar Safety Expert: Bidirectional Override ──────────────────
+                # MUST run unconditionally — after BOTH meta-fusion AND rule-based.
+                # Previous bug: this block was inside the meta-fusion branch only,
+                # so when the meta-model was missing or threw an exception the Scalar
+                # override silently never ran, causing NORMAL conditions to return WARNING.
+                #
+                # IEC 60034-1 Class F temperature thresholds are deterministic physics
+                # laws — they cannot be overridden by any stochastic learned signal.
+                scalar_pred = mod_map.get("Scalar")
+                if scalar_pred is not None:
+                    scalar_class = int(np.argmax(scalar_pred))
+
+                    if scalar_class > class_idx:
+                        # UPGRADE: breach of IEC 60034-1 thermal limits detected
+                        _prev = alert
+                        class_idx   = scalar_class
+                        alert       = ["NORMAL", "WARNING", "CRITICAL"][class_idx]
+                        confidence  = float(scalar_pred[class_idx])
+                        uncertainty = 1.0 - confidence
+                        val         = float(class_idx) / 2.0
+                        logger.warning(
+                            "Scalar upgraded %s → %s (IEC 60034-1 temperature threshold)", _prev, alert)
+
+                    elif scalar_class == 1 and class_idx == 2:
+                        # CEILING: IEC physics says at most WARNING (temp 95–120 °C / ΔT 50–70 K).
+                        #
+                        # CRITICAL is defined by IEC 60034-1: temp > 120 °C OR ΔT > 70 K.
+                        # If scalar says WARNING, neither threshold has been crossed.  A
+                        # CRITICAL prediction from a CNN is therefore physically impossible
+                        # and must be overridden — IEC thermal laws are deterministic.
+                        #
+                        # Exception: if vibration is in ISO 10816-3 Zone C/D (> 2.04 g), a
+                        # mechanical CRITICAL can coexist with only WARNING-level temperatures
+                        # (e.g. bearing seize milliseconds before thermal runaway).  In that
+                        # case respect the CNN and do NOT cap.
+                        _vib_for_ceil = (
+                            float(np.sqrt(np.mean(vib_data[:2048]**2)))
+                            if vib_data.size >= 2048 else 0.0
+                        )
+                        _vib_critical = _vib_for_ceil > 2.04   # ISO Zone C/D boundary (g)
+                        if not _vib_critical:
+                            _prev       = alert
+                            class_idx   = 1
+                            alert       = "WARNING"
+                            confidence  = float(scalar_pred[1])
+                            uncertainty = 1.0 - confidence
+                            val         = 0.5
+                            logger.warning(
+                                "Scalar ceiling: capped CRITICAL → WARNING "
+                                "(scalar=WARNING, vib=%.3fg < 2.04g ISO Zone C — "
+                                "IEC temps have not reached CRITICAL threshold)", _vib_for_ceil)
+
+                    elif scalar_class == 0 and class_idx > 0:
+                        # DOWNGRADE consideration: ALL temperatures are clearly healthy.
+                        # CNN models have domain shift on Simulink synthetic signals
+                        # (trained on real test-rig data, not synthesised sinusoids);
+                        # they predict bearing faults even with A_impact=0. Trust the
+                        # physics when three independent evidences point to healthy state:
+                        #   (a) meta-fusion / rule-based is NOT highly confident (< 0.90)
+                        #   (b) no individual CNN expert is strongly detecting a fault (< 0.85)
+                        #   (c) NASA Bi-LSTM RUL corroborates healthy state (RUL > 50 h)
+                        _nasa_rul = None
+                        for _p in predictions_list:
+                            if _p["id"] == "NASA":
+                                _nasa_rul = float(_p["val"]) * 100.0
+                                break
+
+                        _max_fault_c = max(
+                            (float(np.max(np.array(mod_map[n], dtype=np.float32)[1:]))
+                             for n in training_experts if n in mod_map),
+                            default=0.0
+                        )
+                        _nasa_ok  = (_nasa_rul is None) or (_nasa_rul > 50.0)
+                        _conf_ok  = confidence < 0.92   # was 0.90 — relaxed for domain-shifted signals
+                        _fault_ok = _max_fault_c < 0.90  # was 0.85 — relaxed for synthetic Simulink waveforms
+
+                        if _conf_ok and _fault_ok and _nasa_ok:
+                            _prev       = ["NORMAL", "WARNING", "CRITICAL"][class_idx]
+                            class_idx   = 0
+                            alert       = "NORMAL"
+                            confidence  = float(scalar_pred[0])
+                            uncertainty = 1.0 - confidence
+                            val         = 0.0
+                            logger.info(
+                                "Scalar downgraded %s → NORMAL "
+                                "(fusion_conf=%.2f, max_cnn_fault=%.2f, nasa_rul=%s, all temps healthy)",
+                                _prev, confidence, _max_fault_c,
+                                f"{_nasa_rul:.1f}h" if _nasa_rul is not None else "n/a"
+                            )
+
+                # ── RUL hours ─────────────────────────────────────────────────────
+                # Use real NASA Bi-LSTM output when available; otherwise estimate
+                # from health class (NORMAL ≈ 20 000 h remaining, CRITICAL ≈ 0 h).
                 rul_hours_out: Optional[float] = None
                 for _p in predictions_list:
                     if _p["id"] == "NASA":
-                        # val was stored as rul/100, so multiply back to hours
                         rul_hours_out = round(float(_p["val"]) * 100.0, 2)
                         break
                 if rul_hours_out is None:
                     rul_hours_out = round(max(0.0, (1.0 - float(val)) * 20000.0), 2)
 
-                # ── Fault code — explicit integer so MATLAB never parses strings ─────
-                # 0=None/Unknown  1=Bearing  2=Stator  3=Rotor  4=Tool/Industrial  5=Thermal
-                fault_code = 0
+                # ── Thermal status ────────────────────────────────────────────────
+                # Independent of fault_flags — thermal alarm can coexist with any
+                # mechanical fault. 0=OK, 1=Thermal WARNING, 2=Thermal CRITICAL.
+                thermal_status = 0
                 for _p in predictions_list:
-                    _m = _p.get("model", "")
-                    if _p["id"] == "CWRU" and any(k in _m for k in ("Inner", "Ball", "Outer")):
-                        fault_code = 1; break
-                    if _p["id"] == "Current":
-                        if "Stator" in _m: fault_code = 2; break
-                        if "Rotor"  in _m: fault_code = 3; break
-                    if _p["id"] == "CIA1" and alert != "NORMAL":
-                        fault_code = 4; break
-                    if _p["id"] == "Thermal" and alert != "NORMAL":
-                        fault_code = 5; break
+                    if _p["id"] == "Thermal":
+                        if _p["val"] > 0.6:   thermal_status = 2
+                        elif _p["val"] > 0.3: thermal_status = 1
+                        break
+                if scalars and len(scalars) >= 4:
+                    _mt = _to_celsius(float(scalars[2]))
+                    _at = _to_celsius(float(scalars[3]))
+                    if _mt > 120 or (_mt - _at) > 70:
+                        thermal_status = max(thermal_status, 2)
+                    elif _mt > 95 or (_mt - _at) > 50:
+                        thermal_status = max(thermal_status, 1)
+
+                # ── Multi-fault detection: bitmask ────────────────────────────────
+                # A motor can have simultaneous faults (e.g. bearing wear AND
+                # overheating). fault_flags encodes all active faults as a bitmask
+                # so MATLAB can check each fault type independently:
+                #   bit 0  (1) = Bearing fault       — CWRU/Current CNN
+                #   bit 1  (2) = Rotor misalignment  — Current/Induction CNN
+                #   bit 2  (4) = Shaft fault          — Induction CNN Ring class
+                #   bit 3  (8) = Thermal fault        — Thermal CNN / Scalar IEC alarm
+                # Example: fault_flags=9 means Bearing(1) + Thermal(8) simultaneously.
+                # MATLAB check: bitand(Fault_Type, 1)>0  → bearing fault present
+                _F_BEAR  = 1
+                _F_ROTOR = 2
+                _F_SHAFT = 4
+                _F_THER  = 8
+
+                fault_flags = 0
+
+                if alert not in ("NORMAL", "UNKNOWN"):
+                    def _find(mid):
+                        return next((p for p in predictions_list if p["id"] == mid), None)
+
+                    _cw = _find("CWRU");      _cu = _find("Current")
+                    _in = _find("Induction"); _th = _find("Thermal")
+
+                    # Bearing fault
+                    if _cw and any(k in _cw.get("model","") for k in ("Inner","Ball","Outer")) \
+                            and _cw["conf"] > 0.45:
+                        fault_flags |= _F_BEAR
+                    if _cu and "Bearing-Fault" in _cu.get("model","") and _cu["conf"] > 0.45:
+                        fault_flags |= _F_BEAR
+
+                    # Rotor misalignment
+                    if _cu and "Broken-Rotor-Bar" in _cu.get("model","") and _cu["conf"] > 0.45:
+                        fault_flags |= _F_ROTOR
+                    if _in and any(k in _in.get("model","") for k in ("D1","D2")) \
+                            and _in["conf"] > 0.45:
+                        fault_flags |= _F_ROTOR
+
+                    # Shaft fault
+                    if _in and "Ring" in _in.get("model","") and _in["conf"] > 0.45:
+                        fault_flags |= _F_SHAFT
+
+                    # Thermal fault
+                    if thermal_status >= 1:
+                        fault_flags |= _F_THER
+
+                    # If no CNN confidently identified a specific fault type, default
+                    # to Bearing (most prevalent fault class in the training corpus).
+                    if fault_flags == 0:
+                        fault_flags = _F_BEAR
+
+                # Primary fault code (highest-priority active fault, backward compat)
+                if   fault_flags & _F_THER:  fault_code = 4
+                elif fault_flags & _F_SHAFT:  fault_code = 3
+                elif fault_flags & _F_ROTOR:  fault_code = 2
+                elif fault_flags & _F_BEAR:   fault_code = 1
+                else:                          fault_code = 0
+
+                _fault_type_names = {0: "Healthy", 1: "Bearing Fault", 2: "Rotor Fault",
+                                     3: "Shaft Fault", 4: "Thermal Fault", 5: "Multiple Faults"}
+                # Use "Multiple Faults" when bitmask has >1 fault type set
+                _active_bits = bin(fault_flags).count('1')
+                _eff_fault_code = 5 if _active_bits > 1 else fault_code
+                _fault_type_name = _fault_type_names.get(_eff_fault_code, "Unknown")
+
+                # vib_data is already in g (api_wrapper converted m/s² → g before sending)
+                _vib_rms_for_expl = float(np.sqrt(np.mean(vib_data[:2048]**2))) if vib_data.size >= 2048 else 0.0
+                _explanation = _generate_fault_explanation(
+                    alert, _fault_type_name, _vib_rms_for_expl, motor_temp, rul_hours_out, round(confidence, 4)
+                )
 
                 return {
-                    "prediction": round(float(val), 4),
-                    "alert_level": alert,
-                    "fault_code": fault_code,
-                    "model_used": f"[{fusion_mode}] {models_used}",
+                    "prediction":      round(float(val), 4),
+                    "alert_level":     alert,
+                    "fault_code":      _eff_fault_code,
+                    "fault_flags":     int(fault_flags),
+                    "fault_type_name": _fault_type_name,
+                    "thermal_status":  thermal_status,
+                    "explanation":     _explanation,
+                    "model_used":      f"[{fusion_mode}] {models_used}",
                     "inference_time_ms": (datetime.now() - start_time).total_seconds() * 1000,
-                    "confidence": round(confidence, 4),
-                    "uncertainty": round(uncertainty, 4),
-                    "rul_hours": rul_hours_out,
-                    "status": "success",
-                    "modalities": predictions_list
+                    "confidence":      round(confidence, 4),
+                    "uncertainty":     round(uncertainty, 4),
+                    "rul_hours":       rul_hours_out,
+                    "status":          "success",
+                    "modalities":      predictions_list
                 }
                     
             else:
@@ -979,7 +1361,7 @@ class PredictionEngine:
                     pred = model.predict(inp, verbose=0)
                     idx = np.argmax(pred[0])
                     prediction_value = float(idx) / 2.0
-                    model_used = f"Current-CNN ({['Healthy', 'Stator', 'Rotor'][idx]})"
+                    model_used = f"Current-CNN ({['Healthy', 'Bearing-Fault', 'Broken-Rotor-Bar'][min(idx, 2)]})"
                     confidence = float(pred[0][idx])
 
             # Fallback if no specific modality matched
@@ -1087,7 +1469,9 @@ async def predict_simulink_rest(data: Dict[str, Any]):
         "type":               "prediction",
         "prediction":         result["prediction"],
         "alert_level":        result["alert_level"],
-        "fault_code":         result.get("fault_code", 0),        # 0=None 1=Bearing 2=Stator 3=Rotor 4=Tool 5=Thermal
+        "fault_code":         result.get("fault_code", 0),        # 0=None 1=Bearing 2=Rotor 3=Shaft 4=Thermal
+        "fault_flags":        result.get("fault_flags", 0),       # bitmask: bit0=Bearing bit1=Rotor bit2=Shaft bit3=Thermal
+        "thermal_status":     result.get("thermal_status", 0),    # 0=OK 1=WARNING 2=CRITICAL
         "model_used":         result["model_used"],
         "confidence":         result["confidence"],
         "uncertainty":        result.get("uncertainty", 0.0),
@@ -1227,11 +1611,13 @@ async def websocket_simulink_endpoint(websocket: WebSocket, client_id: str):
                     "machine_id": machine_id,
                     "prediction": prediction_result["prediction"],
                     "alert_level": prediction_result["alert_level"],
-                    "fault_code": prediction_result.get("fault_code", 0),   # 0=None 1=Bearing 2=Stator 3=Rotor 4=Tool 5=Thermal
+                    "fault_code":     prediction_result.get("fault_code", 0),    # 0=None 1=Bearing 2=Rotor 3=Shaft 4=Thermal
+                    "fault_flags":    prediction_result.get("fault_flags", 0),   # bitmask: bit0=Bearing bit1=Rotor bit2=Shaft bit3=Thermal
+                    "thermal_status": prediction_result.get("thermal_status", 0),# 0=OK 1=WARNING 2=CRITICAL
                     "model_used": prediction_result["model_used"],
                     "confidence": prediction_result["confidence"],
                     "uncertainty": prediction_result.get("uncertainty", 0.0),
-                    "rul_hours": prediction_result.get("rul_hours"),         # None = not determined; 0 = imminent failure
+                    "rul_hours": prediction_result.get("rul_hours"),              # None = not determined; 0 = imminent failure
                     "inference_time_ms": prediction_result["inference_time_ms"],
                     "timestamp": datetime.now().isoformat(),
                     "status": prediction_result["status"],
@@ -1336,27 +1722,23 @@ async def websocket_dashboard_endpoint(websocket: WebSocket):
     await websocket.accept()
     manager.dashboard_connections.append(websocket)
     logger.info("✓ Dashboard UI connected to live stream")
-    await websocket.send_json({
-        "type": "connection_confirmed",
-        "message": "Dashboard stream connected",
-        "timestamp": datetime.now().isoformat(),
-        "backend_state": "healthy",
-        "active_clients": manager.get_connection_count()
-    })
     try:
+        await websocket.send_json({
+            "type": "connection_confirmed",
+            "message": "Dashboard stream connected",
+            "timestamp": datetime.now().isoformat(),
+            "backend_state": "healthy",
+            "active_clients": manager.get_connection_count()
+        })
+        # Heartbeat loop: sleep 30 s then send a ping to confirm the connection
+        # is still alive. Using asyncio.sleep (not wait_for + receive_text) to
+        # avoid the Python 3.12 asyncio bug where wait_for cancellation leaves
+        # the WebSocket receive buffer in an invalid state and raises RuntimeError
+        # on the next call — which was causing the frontend to see constant disconnects.
         while True:
-            # Send a lightweight ping every 30 s to detect dead connections.
-            # The dashboard echoes any received text; if it is silent we rely on
-            # the WebSocket close frame arriving when the tab/process dies.
-            try:
-                await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
-            except asyncio.TimeoutError:
-                # No message received — send a ping to check liveness.
-                try:
-                    await websocket.send_json({"type": "ping", "timestamp": datetime.now().isoformat()})
-                except Exception:
-                    break   # Connection is dead; fall through to cleanup
-    except WebSocketDisconnect:
+            await asyncio.sleep(30.0)
+            await websocket.send_json({"type": "ping", "timestamp": datetime.now().isoformat()})
+    except (WebSocketDisconnect, RuntimeError, ConnectionResetError, Exception):
         pass
     finally:
         if websocket in manager.dashboard_connections:

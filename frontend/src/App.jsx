@@ -12,6 +12,7 @@ import { SettingsPage }       from './pages/SettingsPage.jsx'
 import { AboutPage }          from './pages/AboutPage.jsx'
 import { SetupPage }          from './pages/SetupPage.jsx'
 import { ReportPage }         from './pages/ReportPage.jsx'
+import DiagnosticsPage        from './pages/DiagnosticsPage.jsx'
 import { ThemeProvider, useTheme } from './context/ThemeContext.jsx'
 import { ToastProvider, useToast } from './context/ToastContext.jsx'
 import { useDashboardController }  from './hooks/useDashboardController.js'
@@ -20,16 +21,17 @@ import { checkSetupRequired }      from './services/authService.js'
 
 /* ── Constants ───────────────────────────────────────────────────── */
 const PAGE_TITLES = {
-  dashboard: 'System Overview',
-  sensors:   'Live Sensors',
-  trends:    'Trend Analysis',
-  alarms:    'Alarm Center',
-  reports:   'Maintenance Report',
-  settings:  'Settings',
-  about:     'Help & Documentation',
+  dashboard:   'System Overview',
+  sensors:     'Live Sensors',
+  diagnostics: 'AI Diagnostics',
+  trends:      'Trend Analysis',
+  alarms:      'Alarm Center',
+  reports:     'Maintenance Report',
+  settings:    'Settings',
+  about:       'Help & Documentation',
 }
 
-const KEY_NAV = { d: 'dashboard', s: 'sensors', t: 'trends', a: 'alarms', g: 'settings', h: 'about' }
+const KEY_NAV = { d: 'dashboard', s: 'sensors', i: 'diagnostics', t: 'trends', a: 'alarms', g: 'settings', h: 'about' }
 
 /* Session inactivity timeout — 30 minutes (OSHA/industrial HMI best practice) */
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000        // 30 min → auto-logout
@@ -209,6 +211,11 @@ function AppInner() {
           {page === 'sensors' && (
             <PageErrorBoundary pageName="sensors">
               <SensorPage controller={controller} />
+            </PageErrorBoundary>
+          )}
+          {page === 'diagnostics' && (
+            <PageErrorBoundary pageName="diagnostics">
+              <DiagnosticsPage controller={controller} />
             </PageErrorBoundary>
           )}
           {page === 'trends' && (

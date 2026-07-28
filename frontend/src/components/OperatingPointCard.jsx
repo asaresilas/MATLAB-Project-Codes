@@ -19,13 +19,13 @@ export function OperatingPointCard({ operatingPoint, machine }) {
     : rpmNum < 1350 ? 'crit'
     : rpmNum < 1400 ? 'warn'
     : 'ok'
-  // Rated torque 97.3 N·m (15 kW @ 1480 RPM); warn >110 N·m (113%), crit >130 N·m (134%)
-  const torqueStatus = !torqueValid ? 'ok' : torqueNum > 130 ? 'crit' : torqueNum > 110 ? 'warn' : 'ok'
+  // Rated torque 483.9 N·m (75 kW @ 1480 RPM); warn >532 N·m (110%), crit >605 N·m (125%)
+  const torqueStatus = !torqueValid ? 'ok' : torqueNum > 605 ? 'crit' : torqueNum > 532 ? 'warn' : 'ok'
 
   const rows = [
     { label: 'Rated Speed',     value: '1480',   unit: 'RPM', note: 'Nameplate' },
     { label: 'Actual Speed',    value: rpmValid ? rpmNum.toFixed(0) : '--', unit: 'RPM', status: rpmStatus },
-    { label: 'Rated Torque',    value: '97.3',   unit: 'N·m', note: 'Nameplate' },
+    { label: 'Rated Torque',    value: '483.9',  unit: 'N·m', note: 'Nameplate' },
     { label: 'Actual Torque',   value: torqueValid ? torqueNum.toFixed(1) : '--', unit: 'N·m', status: torqueStatus },
     { label: 'Supply Frequency',value: '50',     unit: 'Hz',  note: 'Nominal' },
     { label: 'Supply Voltage',  value: '400',    unit: 'V',   note: '3Ø L-L' },
@@ -59,7 +59,7 @@ export function OperatingPointCard({ operatingPoint, machine }) {
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 8px' }}>
           <GaugeRing
             value={torqueValid ? torqueNum : 0}
-            max={160}
+            max={700}
             unit="N·m"
             label="Shaft Torque"
             status={torqueStatus}

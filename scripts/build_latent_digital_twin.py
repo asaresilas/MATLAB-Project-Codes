@@ -4,19 +4,22 @@ import numpy as np
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(PROJECT_ROOT, "data")
-SOURCE_CACHE = os.path.join(DATA_DIR, "fusion_test_cache.npz")
+TRAIN_SOURCE_CACHE = os.path.join(DATA_DIR, "fusion_train_cache.npz")
+TEST_SOURCE_CACHE  = os.path.join(DATA_DIR, "fusion_test_cache.npz")
 
 np.random.seed(42)
 
-def generate_pool(n_samples, filename):
+def generate_pool(n_samples, filename, source_cache=None):
     print(f"Synthesizing {n_samples} latent-linked samples for {filename}...")
     d_trajectory = np.random.uniform(0, 1.0, n_samples)
-    
+
     # Sort for trajectory-like consistency in test set, keep random for train
     if "test" in filename or "digital_twin" in filename:
         d_trajectory = np.sort(d_trajectory)
 
-    cache = np.load(SOURCE_CACHE)
+    if source_cache is None:
+        source_cache = TEST_SOURCE_CACHE
+    cache = np.load(source_cache)
     raw_Xs = {mod: cache[key] for mod, key in zip(['vibration_cwru', 'vibration_ind', 'nasa_seq', 'current', 'thermal'], ['cwru_x', 'ind_x', 'nasa_x', 'curr_x', 'therm_x'])}
     raw_ys = {mod: cache[key] for mod, key in zip(['vibration_cwru', 'vibration_ind', 'nasa_seq', 'current', 'thermal'], ['cwru_y', 'ind_y', 'nasa_y', 'curr_y', 'therm_y'])}
 
@@ -63,10 +66,16 @@ def generate_pool(n_samples, filename):
 
 def build_latent_digital_twin():
     print("Initializing Phase 2: Latent-State Stacking Data Generation...")
-    if not os.path.exists(SOURCE_CACHE): return
-    
-    generate_pool(1500, "latent_train_cache.npz")
-    generate_pool(300, "latent_digital_twin.npz")
+    # Training DT data must draw from real TRAINING signals to avoid leakage into test holdout
+    if not os.path.exists(TRAIN_SOURCE_CACHE):
+        print(f"ERROR: Training cache not found: {TRAIN_SOURCE_CACHE}")
+        return
+    if not os.path.exists(TEST_SOURCE_CACHE):
+        print(f"ERROR: Test cache not found: {TEST_SOURCE_CACHE}")
+        return
+
+    generate_pool(1500, "latent_train_cache.npz", source_cache=TRAIN_SOURCE_CACHE)
+    generate_pool(300, "latent_digital_twin.npz", source_cache=TEST_SOURCE_CACHE)
     
     print(f"OK SUCCESS: Phase 2 Training/Testing Caches Generated.")
     print("  Integrity: All modalities linked to hidden d-variable.")

@@ -77,7 +77,7 @@ classdef PredictiveMaintenanceClient < handle
             obj.last_prediction = struct(...
                 'type',             '', ...
                 'timestamp',        '', ...
-                'fault_code',       0,  ...   % 0=None 1=Bearing 2=Stator 3=Rotor 4=Tool 5=Thermal
+                'fault_code',       0,  ...   % 0=None 1=Bearing 2=Rotor 3=Shaft 4=Thermal
                 'prediction',       0, ...
                 'alert_level',      'UNKNOWN', ...
                 'model_used',       '', ...
@@ -167,34 +167,37 @@ classdef PredictiveMaintenanceClient < handle
             fprintf('[INFO]   Thermal:     POST http://127.0.0.1:8000/api/v1/predict/simulink/thermal\n');
             fprintf('[INFO]   All required fields (fault_code, rul_hours, uncertainty) are returned.\n');
             
-            % Initialize web options with timeout
-            % Use a more tolerant timeout for legacy HTTP fallback.
+            % Web options — generous timeout because the backend loads TF models
+            % on startup which can take 60-90 s. Each attempt waits up to 30 s
+            % for a response header before giving up.
             obj.http_options = weboptions('MediaType', 'application/json', ...
-                                         'Timeout', 60, ...
+                                         'Timeout', 30, ...
                                          'ArrayFormat', 'csv');
-            
-            % Test connection with health check
+
+            % Test connection with health check.
+            % Retry up to 20 times (with 5 s gaps = up to 100 s total) to give
+            % the backend time to finish loading models before we declare failure.
             try
-                % Convert ws:// to http:// for the check
                 http_url = strrep(obj.server_url, 'ws://', 'http://');
-                % Retry the health check a few times because the FastAPI server
-                % can take more than 1 second to respond during startup.
                 connected = false;
-                last_err = '';
-                for attempt = 1:3
+                last_err  = '';
+                fprintf('[INFO] Waiting for backend to finish loading models');
+                for attempt = 1:20
                     try
                         webread([http_url, '/health'], obj.http_options);
                         connected = true;
                         break;
                     catch retryME
                         last_err = retryME.message;
-                        pause(0.5);
+                        fprintf('.');
+                        pause(5);   % wait 5 s between retries (models take time to load)
                     end
                 end
+                fprintf('\n');
                 if connected
                     obj.use_http_fallback = true;
                     obj.is_connected = true;
-                    fprintf('[SUCCESS] HTTP Legacy Connection Verified.\n');
+                    fprintf('[SUCCESS] HTTP connection verified — backend ready.\n');
                 else
                     error(last_err);
                 end
