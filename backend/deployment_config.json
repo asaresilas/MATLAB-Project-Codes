@@ -27,7 +27,7 @@
     "description": "CNN for current signature fault analysis"
   },
   "Thermal": {
-    "model_path": "models/thermal/model.keras",
+    "model_path": "Trained_models/thermal/model.keras",
     "model_type": "keras",
     "description": "MobileNetV2 for thermal image fault classification"
   }

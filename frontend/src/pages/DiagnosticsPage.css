@@ -64,6 +64,69 @@
 .diag-explanation-source { margin-top: 0.6rem; font-size: 0.75rem; opacity: 0.6; }
 .diag-explanation-empty { opacity: 0.55; font-style: italic; }
 
+/* ── C2. Detected Faults ─────────────────────────────────────────────────── */
+.diag-fault-empty { font-size: 0.9rem; opacity: 0.6; font-style: italic; }
+
+.diag-fault-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.diag-fault-item {
+  padding: 0.85rem 1rem;
+  background: var(--color-bg);
+  border-radius: 0.375rem;
+  border-left: 3px solid #ca8a04;
+}
+.diag-fault-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+}
+.diag-fault-index {
+  flex: 0 0 auto;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  line-height: 1.35rem;
+  text-align: center;
+  border-radius: 50%;
+  background: rgba(202, 138, 4, 0.16);
+  color: #ca8a04;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.diag-fault-name      { font-size: 1rem; font-weight: 700; }
+.diag-fault-component { font-size: 0.78rem; opacity: 0.65; }
+.diag-fault-meas {
+  margin-left: auto;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  padding: 0.1rem 0.45rem;
+  border-radius: 0.25rem;
+  border: 1px solid var(--color-border);
+  opacity: 0.85;
+}
+.diag-fault-desc,
+.diag-fault-evidence,
+.diag-fault-action { margin: 0.3rem 0 0; font-size: 0.875rem; line-height: 1.6; }
+.diag-fault-desc     { opacity: 0.9; }
+.diag-fault-evidence { opacity: 0.72; }
+.diag-fault-action   { opacity: 0.95; }
+.diag-fault-tag {
+  display: inline-block;
+  margin-right: 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.6;
+}
+
 /* ── D. Confidence Bars ──────────────────────────────────────────────────── */
 .diag-conf-header {
   display: grid;

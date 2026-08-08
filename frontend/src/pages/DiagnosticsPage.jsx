@@ -67,6 +67,60 @@ function ExplanationPanel({ explanation, modelUsed }) {
   )
 }
 
+/* ── C2. Detected Faults ──────────────────────────────────────────────────── */
+/* A motor can carry several faults at once. Each one is listed by name with
+   what it is, the evidence that raised it, and the action the operator takes —
+   rather than collapsing them into a single "Multiple Faults" label. */
+function FaultListPanel({ faults, healthState }) {
+  const list = Array.isArray(faults) ? faults : []
+
+  if (healthState === 'NORMAL' || list.length === 0) {
+    return (
+      <section className="diag-section">
+        <h2 className="diag-section-title">Detected Faults</h2>
+        <div className="diag-fault-empty">
+          {healthState === 'NORMAL'
+            ? 'No active faults — all monitored parameters are within design limits.'
+            : 'Awaiting inference result — no fault breakdown available yet.'}
+        </div>
+      </section>
+    )
+  }
+
+  return (
+    <section className="diag-section">
+      <h2 className="diag-section-title">
+        Detected Faults ({list.length} active{list.length > 1 ? ' simultaneously' : ''})
+      </h2>
+      <ol className="diag-fault-list">
+        {list.map((f, i) => (
+          <li key={f.code ?? i} className="diag-fault-item">
+            <div className="diag-fault-head">
+              <span className="diag-fault-index">{i + 1}</span>
+              <span className="diag-fault-name">{f.name}</span>
+              {f.component && <span className="diag-fault-component">{f.component}</span>}
+              {f.measurement && <span className="diag-fault-meas">{f.measurement}</span>}
+            </div>
+            {f.description && <p className="diag-fault-desc">{f.description}</p>}
+            {Array.isArray(f.evidence) && f.evidence.length > 0 && (
+              <p className="diag-fault-evidence">
+                <span className="diag-fault-tag">Evidence</span>
+                {f.evidence.join(' · ')}
+              </p>
+            )}
+            {f.action && (
+              <p className="diag-fault-action">
+                <span className="diag-fault-tag">Action</span>
+                {f.action}
+              </p>
+            )}
+          </li>
+        ))}
+      </ol>
+    </section>
+  )
+}
+
 /* ── D. Expert Confidence Bars ────────────────────────────────────────────── */
 function ConfidenceBar({ name, conf, available, predictedClass }) {
   const pctVal = conf != null ? Math.round(conf * 100) : 0
@@ -199,6 +253,7 @@ export default function DiagnosticsPage({ controller }) {
   const healthState   = machine?.healthState    || 'UNKNOWN'
   const faultTypeName = machine?.faultTypeName  || 'Healthy'
   const explanation   = machine?.explanation    || ''
+  const faults        = machine?.faults         || []
   const confidence    = machine?.predictionCertainty   // already in %
   const rulHours      = machine?.rulHours
   const modelUsed     = machine?.modelUsed      || 'Meta Fusion XGBoost'
@@ -231,7 +286,9 @@ export default function DiagnosticsPage({ controller }) {
         <MetricCard
           label="Detected Fault"
           value={faultTypeName}
-          sub="Categorical fault code from meta-fusion"
+          sub={faults.length > 1
+            ? `${faults.length} simultaneous faults — see breakdown below`
+            : 'Categorical fault code from meta-fusion'}
           color="neutral"
         />
         <MetricCard
@@ -244,6 +301,9 @@ export default function DiagnosticsPage({ controller }) {
 
       {/* C — AI Explanation */}
       <ExplanationPanel explanation={explanation} modelUsed={modelUsed} />
+
+      {/* C2 — Per-fault breakdown (names + explanations for every active fault) */}
+      <FaultListPanel faults={faults} healthState={healthState} />
 
       {/* D — Expert Confidence */}
       <ExpertPanel models={models} />

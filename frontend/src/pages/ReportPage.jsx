@@ -183,6 +183,7 @@ export function ReportPage({ controller }) {
   const healthState   = machine?.healthState    ?? 'UNKNOWN'
   const healthCls     = { NORMAL: 'ok', WARNING: 'warn', CRITICAL: 'crit' }[healthState.toUpperCase()] ?? 'idle'
   const faultTypeName = machine?.faultTypeName  || 'Healthy'
+  const faultList     = Array.isArray(machine?.faults) ? machine.faults : []
   const aiExplanation = machine?.explanation    || ''
   const cert          = parseFloat(machine?.predictionCertainty)
   const certStr       = !isNaN(cert) ? `${cert.toFixed(0)}%` : '—'
@@ -560,6 +561,44 @@ export function ReportPage({ controller }) {
               <div className="rpt-ai-expl-label">Operator Explanation (AI-generated)</div>
               <p className="rpt-ai-expl-body">{aiExplanation}</p>
             </div>
+          )}
+
+          {/* Per-fault breakdown — every simultaneously-active fault, named,
+              explained and paired with its corrective action. */}
+          {faultList.length > 0 && (
+            <table className="rpt-table rpt-table-full" style={{ marginTop: 14 }}>
+              <thead>
+                <tr>
+                  <th style={{ width: '4%' }}>#</th>
+                  <th style={{ width: '20%' }}>Fault</th>
+                  <th style={{ width: '38%' }}>Description &amp; Evidence</th>
+                  <th style={{ width: '38%' }}>Corrective Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {faultList.map((f, i) => (
+                  <tr key={f.code ?? i}>
+                    <td className="rpt-td-val" style={{ textAlign: 'center', fontWeight: 700 }}>{i + 1}</td>
+                    <td className="rpt-td-val">
+                      <strong>{f.name}</strong>
+                      <div style={{ fontSize: '0.78rem', opacity: 0.7 }}>{f.component}</div>
+                      {f.measurement && (
+                        <div style={{ fontSize: '0.78rem', opacity: 0.85 }}>{f.measurement}</div>
+                      )}
+                    </td>
+                    <td className="rpt-td-val" style={{ lineHeight: 1.55 }}>
+                      {f.description}
+                      {Array.isArray(f.evidence) && f.evidence.length > 0 && (
+                        <div style={{ marginTop: 4, fontSize: '0.78rem', opacity: 0.72 }}>
+                          Evidence: {f.evidence.join(' · ')}
+                        </div>
+                      )}
+                    </td>
+                    <td className="rpt-td-val" style={{ lineHeight: 1.55 }}>{f.action}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
 
           <table className="rpt-table rpt-table-full" style={{ marginTop: 14 }}>

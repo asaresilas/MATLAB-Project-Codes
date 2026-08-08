@@ -67,3 +67,6 @@ Paper/AutoRecovery*
 
 # ── Claude Code internal ──────────────────────────────────────────────────────
 .claude/
+
+# Build artifact (deployment bundle)
+motorguide-backend.zip

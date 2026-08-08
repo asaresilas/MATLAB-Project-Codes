@@ -8,11 +8,21 @@ function [h_out, f_out, c_out, a_out, r_out, t_out] = api_wrapper(vib_mag, curre
 % OUTPUTS (all numeric scalars for Simulink ports):
 %   h_out  - Health state:   0=Unknown, 1=Normal, 2=Warning, 3=Critical
 %   f_out  - Categorical fault code (single dominant fault):
-%              0 = Healthy          4 = Thermal Fault
-%              1 = Bearing Fault    5 = Multiple Faults
+%              0 = Healthy                4 = Thermal Fault
+%              1 = Bearing Fault          5 = Two or more faults active
 %              2 = Rotor Fault
-%              3 = Shaft Fault
+%              3 = Stator Winding Fault
 %            Read from backend field 'fault_code' (not 'fault_flags' bitmask).
+%
+%            NOTE: code 3 was previously documented as "Shaft Fault" and was
+%            raised by the Induction-CNN "Ring" class. Ring is a rotor end-ring
+%            defect, not a shaft defect, so that mapping was wrong on both
+%            counts: Ring now raises the Rotor bit, and code 3 is the stator
+%            winding fault (Induction-CNN class D2). Bit VALUES are unchanged.
+%
+%            The backend also returns 'fault_type_name' (e.g. "Bearing +
+%            Thermal Fault") and a 'faults' array naming and explaining every
+%            simultaneously-active fault. Both are shown on the dashboard.
 %   c_out  - Confidence [0–100 %]
 %   a_out  - Validated meta-fusion F1-macro accuracy [90.89 % — fixed constant]
 %   r_out  - Remaining Useful Life (hours, from NASA Bi-LSTM or class approximation)

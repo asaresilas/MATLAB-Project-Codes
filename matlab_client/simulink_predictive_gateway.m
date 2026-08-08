@@ -11,11 +11,15 @@ function [Health_State, Fault_Type, Confidence, Accuracy, RUL_Hours, Thermal_Sta
 %   Health_State  - 0=Unknown | 1=Normal | 2=Warning | 3=Critical
 %   Fault_Type    - Categorical fault code (single dominant fault):
 %                     0 = Healthy          (no fault detected)
-%                     1 = Bearing Fault    (CWRU-CNN / Current-CNN)
-%                     2 = Rotor Fault      (Induction-CNN / Current-CNN)
-%                     3 = Shaft Fault      (Induction-CNN Ring class)
+%                     1 = Bearing Fault    (CWRU-CNN / Current-CNN / Induction D1)
+%                     2 = Rotor Fault      (Current-CNN broken bar / Induction Ring)
+%                     3 = Stator Winding   (Induction-CNN D2)
 %                     4 = Thermal Fault    (Thermal-CNN / IEC scalar alarm)
-%                     5 = Multiple Faults  (two or more fault types active)
+%                     5 = Two or more fault types active simultaneously
+%                   Code 3 was previously "Shaft Fault" fed by the Induction-CNN
+%                   Ring class; Ring is a rotor end-ring defect, so it now sets
+%                   the Rotor bit and code 3 carries the stator winding fault.
+%                   Bit VALUES in Fault_Type are unchanged.
 %   Confidence    - Model confidence [0–100 %]
 %   Accuracy      - Validated meta-fusion F1-macro [90.89 % — see CLAUDE.md]
 %   RUL_Hours     - Remaining Useful Life in hours (–1 = not yet determined)

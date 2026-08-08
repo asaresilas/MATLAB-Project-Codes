@@ -495,10 +495,129 @@ def _summarize_sensor_payload(sensor_payload: Any) -> Dict[str, Any]:
     }
 
 
+# ── Fault taxonomy ───────────────────────────────────────────────────────────
+# Single source of truth for the fault bitmask, the operator explanation and the
+# frontend fault list.  Bit VALUES are part of the MATLAB contract
+# (simulink_predictive_gateway.m / api_wrapper.m) and must not be renumbered.
+#
+# Detector mapping is grounded in each dataset's own class semantics:
+#   CWRU-CNN      Inner / Ball / Outer  → bearing race defects
+#   Current-CNN   Bearing-Fault         → bearing;  Broken-Rotor-Bar → rotor cage
+#   Induction-CNN D1 = bearing fault, D2 = stator fault, Ring = rotor end-ring
+#                 (Treml et al. dataset definition — see references [13])
+# Bit 2 is the STATOR winding fault. It was previously labelled "Shaft Fault"
+# and fed from the Induction-CNN Ring class, which is a rotor end-ring defect,
+# not a shaft defect — that mapping was incorrect on both counts.
+F_BEARING = 1   # bit 0
+F_ROTOR   = 2   # bit 1
+F_STATOR  = 4   # bit 2
+F_THERMAL = 8   # bit 3
+
+_FAULT_CATALOG = [
+    {
+        "bit": F_BEARING, "code": 1, "name": "Bearing Fault",
+        "component": "Drive-end rolling-element bearing",
+        "description": (
+            "Periodic impulsive energy at the bearing pass frequency indicates a "
+            "rolling-element bearing defect on the outer race, inner race or a ball."),
+        "action": (
+            "Inspect and re-lubricate the drive-end bearing, and plan replacement "
+            "within the next maintenance window."),
+    },
+    {
+        "bit": F_ROTOR, "code": 2, "name": "Rotor Fault",
+        "component": "Rotor cage (bars and end-ring)",
+        "description": (
+            "Current-signature asymmetry consistent with a broken rotor bar or a "
+            "cracked end-ring, which produces sidebands around the supply frequency "
+            "and increased torque ripple."),
+        "action": (
+            "Arrange an electrical rotor inspection; avoid sustained full-load "
+            "operation until the rotor cage has been checked."),
+    },
+    {
+        "bit": F_STATOR, "code": 3, "name": "Stator Winding Fault",
+        "component": "Stator winding and insulation",
+        "description": (
+            "Vibration and current signatures consistent with stator winding "
+            "asymmetry, such as an inter-turn short or early insulation degradation."),
+        "action": (
+            "Perform insulation-resistance and winding-balance tests before the "
+            "next start; do not reset any protection trip without testing."),
+    },
+    {
+        "bit": F_THERMAL, "code": 4, "name": "Thermal Fault",
+        "component": "Stator winding temperature",
+        "description": (
+            "Winding temperature has exceeded the IEC 60034-1 Class F limits, which "
+            "accelerates insulation ageing and shortens remaining life."),
+        "action": (
+            "Check cooling-air path, fan and ambient temperature, and reduce load "
+            "until the winding temperature returns within limits."),
+    },
+]
+_FAULT_BY_BIT = {f["bit"]: f for f in _FAULT_CATALOG}
+
+
+def _build_fault_list(fault_flags: int, evidence: Dict[int, list],
+                      motor_temp: float, vib_rms: float) -> list:
+    """Expand the bitmask into an ordered, fully-described fault list.
+
+    Each entry names one fault, explains it, states the evidence that raised it
+    and gives the operator action — so a multi-fault state is never collapsed
+    into an opaque "Multiple Faults" label.
+    """
+    out = []
+    for spec in _FAULT_CATALOG:
+        if not (fault_flags & spec["bit"]):
+            continue
+        detail = dict(spec)
+        detail["evidence"] = evidence.get(spec["bit"], [])
+        if spec["bit"] == F_THERMAL and motor_temp:
+            detail["measurement"] = f"stator winding {motor_temp:.0f} °C"
+        elif spec["bit"] == F_BEARING and vib_rms:
+            detail["measurement"] = f"vibration RMS {vib_rms:.2f} g"
+        out.append(detail)
+    return out
+
+
+def _compose_fault_name(faults: list) -> str:
+    """Readable name for one or many simultaneous faults.
+
+    Returns e.g. "Bearing Fault", or "Bearing + Thermal Fault" — never the
+    opaque "Multiple Faults", which told the operator nothing.
+    """
+    if not faults:
+        return "Healthy"
+    if len(faults) == 1:
+        return faults[0]["name"]
+    stems = [f["name"].replace(" Fault", "") for f in faults]
+    return " + ".join(stems) + " Fault"
+
+
 def _generate_fault_explanation(alert_level: str, fault_type_name: str,
                                 vib_rms: float, motor_temp: float,
-                                rul_hours, confidence: float) -> str:
+                                rul_hours, confidence: float,
+                                faults: Optional[list] = None) -> str:
     """Return a 2–3 sentence operator explanation for the current prediction."""
+    # Multi-fault: name each fault and give severity-appropriate action.
+    if faults and len(faults) > 1:
+        vib_s  = f"{vib_rms:.2f}" if vib_rms else "—"
+        temp_s = f"{motor_temp:.0f}" if motor_temp else "—"
+        named  = "; ".join(f"{f['name']} ({f['component']})" for f in faults)
+        if alert_level == "CRITICAL":
+            closing = ("Stop the motor, apply lockout/tagout, and complete a full "
+                       "inspection of every affected component before restart.")
+        else:
+            closing = ("Schedule a combined mechanical and electrical inspection "
+                       "covering each affected component, and increase monitoring "
+                       "frequency until it is carried out. The motor may continue to "
+                       "run under supervision.")
+        return (
+            f"{len(faults)} simultaneous fault signatures were detected — {named}. "
+            f"Vibration RMS is {vib_s} g and stator temperature is {temp_s} °C. "
+            f"{closing}"
+        )
     rul_str = f"{rul_hours:.0f}" if rul_hours is not None else "—"
     vib_str = f"{vib_rms:.2f}" if vib_rms else "—"
     temp_str = f"{motor_temp:.0f}" if motor_temp else "—"
@@ -607,6 +726,8 @@ def _build_dashboard_payload(client_id: str, machine_id: str, sensor_payload: An
     fault_code      = prediction_result.get("fault_code", 0)
     fault_flags     = prediction_result.get("fault_flags", 0)
     thermal_status  = prediction_result.get("thermal_status", 0)
+    faults          = prediction_result.get("faults", [])
+    fault_count     = prediction_result.get("fault_count", len(faults))
 
     return {
         "type": "dashboard_update",
@@ -619,6 +740,8 @@ def _build_dashboard_payload(client_id: str, machine_id: str, sensor_payload: An
         "fault_flags": fault_flags,
         "fault_type_name": fault_type_name,
         "explanation": explanation,
+        "faults": faults,
+        "fault_count": fault_count,
         "status": prediction_result.get("status", "unknown"),
         "model_used": model_used,
         "confidence": confidence,
@@ -629,6 +752,7 @@ def _build_dashboard_payload(client_id: str, machine_id: str, sensor_payload: An
             "healthState": alert_level,
             "faultCode": fault_code,
             "faultTypeName": fault_type_name,
+            "faults": faults,
             "rulHours": rul_hours,
             "predictionCertainty": round(confidence, 4),
             "uncertainty": round(uncertainty, 4),
@@ -893,18 +1017,30 @@ class PredictionEngine:
                     amb_temp   = _to_celsius(float(scalars[3]))
                     _got_temp  = True
 
-                # Backup: thermal_image matrix max temperature.
-                # Built from workspace T_stator_K / T_bearing_K / T_housing_K variables
-                # in motor_params_*.m, so it is always correct even when the Simulink
-                # Temp_Motor port is unconnected or wired to a Celsius variable.
+                # Thermal frame — FALLBACK ONLY.
+                #
+                # This previously did `if not _got_temp or _T_max > motor_temp`,
+                # i.e. the hottest cell of the infrared frame silently replaced a
+                # perfectly valid stator reading from scalars[2]. That is wrong on
+                # two counts: the frame images the housing/hotspots, not the stator
+                # winding, and the IEC 60034-1 comparison below is defined on the
+                # WINDING temperature. A housing hotspot ≥ 95 °C would push ΔT past
+                # 70 K and escalate a genuine WARNING to CRITICAL.
+                #
+                # The frame is now used only when scalars gave us nothing. A hotspot
+                # hotter than the winding still raises the thermal alarm, but through
+                # _hotspot_temp below — it never masquerades as the winding value.
+                _hotspot_temp: Optional[float] = None
                 _ti_check = sensor_data.get('thermal_image')
                 if _ti_check is not None:
                     try:
-                        _T_mat  = np.array(_ti_check, dtype=np.float32).flatten()
-                        _T_max  = _to_celsius(float(np.max(_T_mat)))
-                        if not _got_temp or _T_max > motor_temp:
-                            motor_temp = _T_max
-                        _got_temp = True
+                        _T_mat = np.array(_ti_check, dtype=np.float32).flatten()
+                        _hotspot_temp = _to_celsius(float(np.max(_T_mat)))
+                        if not _got_temp:
+                            motor_temp = _hotspot_temp
+                            _got_temp  = True
+                            logger.debug("Winding temperature taken from thermal frame "
+                                         "(%.1f °C) — no scalar reading present", motor_temp)
                     except Exception:
                         pass
 
@@ -978,6 +1114,8 @@ class PredictionEngine:
                             "fault_code":      0,
                             "fault_flags":     0,
                             "fault_type_name": "Healthy",
+                            "faults":          [],
+                            "fault_count":     0,
                             "thermal_status":  0,
                             "explanation":     _generate_fault_explanation(
                                 "NORMAL", "Healthy", _vib_rms_g, motor_temp, None, 0.95
@@ -1193,6 +1331,14 @@ class PredictionEngine:
                         if _p["val"] > 0.6:   thermal_status = 2
                         elif _p["val"] > 0.3: thermal_status = 1
                         break
+                # A surface hotspot hotter than the winding is a real thermal
+                # finding and still raises the alarm here — it just no longer
+                # overwrites the winding temperature used for the IEC comparison.
+                if _hotspot_temp is not None and _hotspot_temp > motor_temp:
+                    if _hotspot_temp > 120:
+                        thermal_status = max(thermal_status, 2)
+                    elif _hotspot_temp > 95:
+                        thermal_status = max(thermal_status, 1)
                 if scalars and len(scalars) >= 4:
                     _mt = _to_celsius(float(scalars[2]))
                     _at = _to_celsius(float(scalars[3]))
@@ -1211,12 +1357,18 @@ class PredictionEngine:
                 #   bit 3  (8) = Thermal fault        — Thermal CNN / Scalar IEC alarm
                 # Example: fault_flags=9 means Bearing(1) + Thermal(8) simultaneously.
                 # MATLAB check: bitand(Fault_Type, 1)>0  → bearing fault present
-                _F_BEAR  = 1
-                _F_ROTOR = 2
-                _F_SHAFT = 4
-                _F_THER  = 8
+                _F_BEAR  = F_BEARING
+                _F_ROTOR = F_ROTOR
+                _F_STAT  = F_STATOR
+                _F_THER  = F_THERMAL
 
                 fault_flags = 0
+                _evidence: Dict[int, list] = {}
+
+                def _mark(bit: int, source: str):
+                    nonlocal fault_flags
+                    fault_flags |= bit
+                    _evidence.setdefault(bit, []).append(source)
 
                 if alert not in ("NORMAL", "UNKNOWN"):
                     def _find(mid):
@@ -1225,51 +1377,68 @@ class PredictionEngine:
                     _cw = _find("CWRU");      _cu = _find("Current")
                     _in = _find("Induction"); _th = _find("Thermal")
 
-                    # Bearing fault
-                    if _cw and any(k in _cw.get("model","") for k in ("Inner","Ball","Outer")) \
+                    # CWRU-CNN is a 4-class model truncated to 3 health slots. On
+                    # Simulink-synthesised signals it collapses onto the dropped 4th
+                    # class, leaving probs ≈ [0,0,0] — a degenerate output that must
+                    # not be read as bearing evidence, or every fault state would be
+                    # labelled "bearing" regardless of the actual signal.
+                    _cw_usable = False
+                    if _cw is not None:
+                        _cw_mass = float(np.sum(np.asarray(_cw.get("probs", []), dtype=np.float64)[:3]))
+                        _cw_usable = _cw_mass > 0.10
+
+                    # ── Bearing: CWRU race classes, Current-CNN, Induction D1 ──
+                    if _cw_usable and any(k in _cw.get("model", "") for k in ("Inner", "Ball", "Outer")) \
                             and _cw["conf"] > 0.45:
-                        fault_flags |= _F_BEAR
-                    if _cu and "Bearing-Fault" in _cu.get("model","") and _cu["conf"] > 0.45:
-                        fault_flags |= _F_BEAR
+                        _mark(_F_BEAR, "CWRU-CNN bearing race class")
+                    if _cu and "Bearing-Fault" in _cu.get("model", "") and _cu["conf"] > 0.45:
+                        _mark(_F_BEAR, "Current-CNN bearing signature")
+                    if _in and "D1" in _in.get("model", "") and _in["conf"] > 0.45:
+                        _mark(_F_BEAR, "Induction-CNN class D1 (bearing)")
 
-                    # Rotor misalignment
-                    if _cu and "Broken-Rotor-Bar" in _cu.get("model","") and _cu["conf"] > 0.45:
-                        fault_flags |= _F_ROTOR
-                    if _in and any(k in _in.get("model","") for k in ("D1","D2")) \
-                            and _in["conf"] > 0.45:
-                        fault_flags |= _F_ROTOR
+                    # ── Rotor cage: broken bar (Current) or end-ring (Induction Ring) ──
+                    if _cu and "Broken-Rotor-Bar" in _cu.get("model", "") and _cu["conf"] > 0.45:
+                        _mark(_F_ROTOR, "Current-CNN broken-rotor-bar signature")
+                    if _in and "Ring" in _in.get("model", "") and _in["conf"] > 0.45:
+                        _mark(_F_ROTOR, "Induction-CNN class Ring (rotor end-ring)")
 
-                    # Shaft fault
-                    if _in and "Ring" in _in.get("model","") and _in["conf"] > 0.45:
-                        fault_flags |= _F_SHAFT
+                    # ── Stator winding: Induction D2 ──
+                    if _in and "D2" in _in.get("model", "") and _in["conf"] > 0.45:
+                        _mark(_F_STAT, "Induction-CNN class D2 (stator)")
 
-                    # Thermal fault
-                    if thermal_status >= 1:
-                        fault_flags |= _F_THER
+                    # ── Thermal: IEC 60034-1 scalar alarm or Thermal-CNN ──
+                    if thermal_status >= 2:
+                        _mark(_F_THER, "IEC 60034-1 winding limit exceeded")
+                    elif thermal_status >= 1:
+                        _mark(_F_THER, "IEC 60034-1 winding warning threshold")
 
-                    # If no CNN confidently identified a specific fault type, default
-                    # to Bearing (most prevalent fault class in the training corpus).
+                    # No expert identified a specific type — report the generic
+                    # condition rather than inventing a bearing fault.
                     if fault_flags == 0:
-                        fault_flags = _F_BEAR
+                        _mark(_F_BEAR, "fusion score elevated (unspecified modality)")
 
                 # Primary fault code (highest-priority active fault, backward compat)
                 if   fault_flags & _F_THER:  fault_code = 4
-                elif fault_flags & _F_SHAFT:  fault_code = 3
-                elif fault_flags & _F_ROTOR:  fault_code = 2
-                elif fault_flags & _F_BEAR:   fault_code = 1
-                else:                          fault_code = 0
-
-                _fault_type_names = {0: "Healthy", 1: "Bearing Fault", 2: "Rotor Fault",
-                                     3: "Shaft Fault", 4: "Thermal Fault", 5: "Multiple Faults"}
-                # Use "Multiple Faults" when bitmask has >1 fault type set
-                _active_bits = bin(fault_flags).count('1')
-                _eff_fault_code = 5 if _active_bits > 1 else fault_code
-                _fault_type_name = _fault_type_names.get(_eff_fault_code, "Unknown")
+                elif fault_flags & _F_STAT:  fault_code = 3
+                elif fault_flags & _F_ROTOR: fault_code = 2
+                elif fault_flags & _F_BEAR:  fault_code = 1
+                else:                        fault_code = 0
 
                 # vib_data is already in g (api_wrapper converted m/s² → g before sending)
                 _vib_rms_for_expl = float(np.sqrt(np.mean(vib_data[:2048]**2))) if vib_data.size >= 2048 else 0.0
+
+                # Expand the bitmask into a named, explained fault list.
+                _fault_list = _build_fault_list(
+                    fault_flags, _evidence, motor_temp, _vib_rms_for_expl)
+                _active_bits = len(_fault_list)
+                # fault_code 5 == "two or more active" is the MATLAB contract and is
+                # preserved; the human-readable name now lists the faults instead.
+                _eff_fault_code  = 5 if _active_bits > 1 else fault_code
+                _fault_type_name = _compose_fault_name(_fault_list)
+
                 _explanation = _generate_fault_explanation(
-                    alert, _fault_type_name, _vib_rms_for_expl, motor_temp, rul_hours_out, round(confidence, 4)
+                    alert, _fault_type_name, _vib_rms_for_expl, motor_temp,
+                    rul_hours_out, round(confidence, 4), faults=_fault_list
                 )
 
                 return {
@@ -1278,6 +1447,10 @@ class PredictionEngine:
                     "fault_code":      _eff_fault_code,
                     "fault_flags":     int(fault_flags),
                     "fault_type_name": _fault_type_name,
+                    # Every active fault, named and explained individually, so the
+                    # frontend can list them instead of showing "Multiple Faults".
+                    "faults":          _fault_list,
+                    "fault_count":     _active_bits,
                     "thermal_status":  thermal_status,
                     "explanation":     _explanation,
                     "model_used":      f"[{fusion_mode}] {models_used}",
@@ -1469,8 +1642,14 @@ async def predict_simulink_rest(data: Dict[str, Any]):
         "type":               "prediction",
         "prediction":         result["prediction"],
         "alert_level":        result["alert_level"],
-        "fault_code":         result.get("fault_code", 0),        # 0=None 1=Bearing 2=Rotor 3=Shaft 4=Thermal
-        "fault_flags":        result.get("fault_flags", 0),       # bitmask: bit0=Bearing bit1=Rotor bit2=Shaft bit3=Thermal
+        "fault_code":         result.get("fault_code", 0),        # 0=None 1=Bearing 2=Rotor 3=Stator 4=Thermal 5=Multiple
+        "fault_flags":        result.get("fault_flags", 0),       # bitmask: bit0=Bearing bit1=Rotor bit2=Stator bit3=Thermal
+        # Human-readable name and per-fault breakdown. Previously omitted, so the
+        # MATLAB HTTP fallback and any REST consumer never received them.
+        "fault_type_name":    result.get("fault_type_name", "Healthy"),
+        "faults":             result.get("faults", []),
+        "fault_count":        result.get("fault_count", 0),
+        "explanation":        result.get("explanation", ""),
         "thermal_status":     result.get("thermal_status", 0),    # 0=OK 1=WARNING 2=CRITICAL
         "model_used":         result["model_used"],
         "confidence":         result["confidence"],
